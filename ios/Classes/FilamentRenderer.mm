@@ -5,12 +5,18 @@
 #undef DEBUG
 
 #include <backend/BufferDescriptor.h>
+#include <algorithm>
+#include <cmath>
 #include <filament/Camera.h>
+#include <filament/Box.h>
 #include <filament/Engine.h>
 #include <filament/LightManager.h>
+#include <filament/IndirectLight.h>
 #include <filament/Renderer.h>
 #include <filament/Scene.h>
+#include <filament/Skybox.h>
 #include <filament/SwapChain.h>
+#include <filament/Texture.h>
 #include <filament/View.h>
 #include <filament/Viewport.h>
 #include <gltfio/AssetLoader.h>
@@ -19,6 +25,9 @@
 #include <gltfio/ResourceLoader.h>
 #include <gltfio/TextureProvider.h>
 #include <gltfio/materials/uberarchive.h>
+#include <image/Ktx1Bundle.h>
+#include <ktxreader/Ktx1Reader.h>
+#include <math/vec3.h>
 #include <utils/Entity.h>
 #include <utils/EntityManager.h>
 
@@ -34,6 +43,18 @@ Engine* SharedEngine() {
 
 void ReleaseBuffer(void* buffer, size_t, void*) {
     free(buffer);
+}
+
+double ClampValue(double value, double minValue, double maxValue) {
+    return std::max(minValue, std::min(value, maxValue));
+}
+
+double DegreesToRadians(double degrees) {
+    return degrees * 3.141592653589793 / 180.0;
+}
+
+double LengthFloat3(const math::float3& value) {
+    return std::sqrt(value.x * value.x + value.y * value.y + value.z * value.z);
 }
 }  // namespace
 
@@ -52,6 +73,35 @@ void ReleaseBuffer(void* buffer, size_t, void*) {
     ResourceLoader* _resourceLoader;
     FilamentAsset* _asset;
     FilamentAsset* _pendingAsset;
+    IndirectLight* _indirectLight;
+    Texture* _iblTexture;
+    Skybox* _skybox;
+    Texture* _skyboxTexture;
+    math::float3 _orbitTarget;
+    double _yawDeg;
+    double _pitchDeg;
+    double _distance;
+    double _minYawDeg;
+    double _maxYawDeg;
+    double _minPitchDeg;
+    double _maxPitchDeg;
+    double _minDistance;
+    double _maxDistance;
+    double _damping;
+    double _sensitivity;
+    double _velocityYaw;
+    double _velocityPitch;
+    uint64_t _lastFrameTimeNanos;
+    bool _inertiaEnabled;
+    bool _customCameraEnabled;
+    double _customLookAt[9];
+    double _customPerspective[3];
+    double _cameraFovDegrees;
+    double _cameraNear;
+    double _cameraFar;
+    math::float3 _modelCenter;
+    math::float3 _modelExtent;
+    bool _hasModelBounds;
     CVPixelBufferRef _pixelBuffer;
     BOOL _paused;
     int _width;
@@ -73,6 +123,45 @@ void ReleaseBuffer(void* buffer, size_t, void*) {
         _resourceLoader = nullptr;
         _asset = nullptr;
         _pendingAsset = nullptr;
+        _indirectLight = nullptr;
+        _iblTexture = nullptr;
+        _skybox = nullptr;
+        _skyboxTexture = nullptr;
+        _orbitTarget = math::float3{0.0f, 0.0f, 0.0f};
+        _yawDeg = 0.0;
+        _pitchDeg = 0.0;
+        _distance = 3.0;
+        _minYawDeg = -180.0;
+        _maxYawDeg = 180.0;
+        _minPitchDeg = -89.0;
+        _maxPitchDeg = 89.0;
+        _minDistance = 0.05;
+        _maxDistance = 100.0;
+        _damping = 0.9;
+        _sensitivity = 0.15;
+        _velocityYaw = 0.0;
+        _velocityPitch = 0.0;
+        _lastFrameTimeNanos = 0;
+        _inertiaEnabled = true;
+        _customCameraEnabled = false;
+        _customLookAt[0] = 0.0;
+        _customLookAt[1] = 0.0;
+        _customLookAt[2] = 3.0;
+        _customLookAt[3] = 0.0;
+        _customLookAt[4] = 0.0;
+        _customLookAt[5] = 0.0;
+        _customLookAt[6] = 0.0;
+        _customLookAt[7] = 1.0;
+        _customLookAt[8] = 0.0;
+        _customPerspective[0] = 45.0;
+        _customPerspective[1] = 0.05;
+        _customPerspective[2] = 100.0;
+        _cameraFovDegrees = 45.0;
+        _cameraNear = 0.05;
+        _cameraFar = 100.0;
+        _modelCenter = math::float3{0.0f, 0.0f, 0.0f};
+        _modelExtent = math::float3{0.5f, 0.5f, 0.5f};
+        _hasModelBounds = false;
         _pixelBuffer = nullptr;
         _paused = NO;
         _width = 1;
@@ -153,6 +242,151 @@ void ReleaseBuffer(void* buffer, size_t, void*) {
     _asset = _pendingAsset;
     _pendingAsset = nullptr;
     _resourceLoader->evictResourceData();
+    [self updateBoundsFromAsset];
+}
+
+- (void)setIndirectLightFromKTX:(NSData *)data {
+    if (_scene == nullptr) {
+        return;
+    }
+    if (_indirectLight) {
+        _engine->destroy(_indirectLight);
+        _indirectLight = nullptr;
+    }
+    if (_iblTexture) {
+        _engine->destroy(_iblTexture);
+        _iblTexture = nullptr;
+    }
+    const uint8_t* bytes = reinterpret_cast<const uint8_t*>(data.bytes);
+    auto* bundle = new image::Ktx1Bundle(bytes, (uint32_t)data.length);
+    math::float3 sh[9];
+    const bool hasSh = bundle->getSphericalHarmonics(sh);
+    _iblTexture = ktxreader::Ktx1Reader::createTexture(_engine, bundle, true);
+    IndirectLight::Builder builder;
+    builder.reflections(_iblTexture);
+    if (hasSh) {
+        builder.irradiance(3, sh);
+    }
+    _indirectLight = builder.build(*_engine);
+    _scene->setIndirectLight(_indirectLight);
+}
+
+- (void)setSkyboxFromKTX:(NSData *)data {
+    if (_scene == nullptr) {
+        return;
+    }
+    if (_skybox) {
+        _engine->destroy(_skybox);
+        _skybox = nullptr;
+    }
+    if (_skyboxTexture) {
+        _engine->destroy(_skyboxTexture);
+        _skyboxTexture = nullptr;
+    }
+    const uint8_t* bytes = reinterpret_cast<const uint8_t*>(data.bytes);
+    auto* bundle = new image::Ktx1Bundle(bytes, (uint32_t)data.length);
+    _skyboxTexture = ktxreader::Ktx1Reader::createTexture(_engine, bundle, true);
+    _skybox = Skybox::Builder().environment(_skyboxTexture).build(*_engine);
+    _scene->setSkybox(_skybox);
+}
+
+- (void)frameModel:(BOOL)useWorldOrigin {
+    if (!_hasModelBounds || useWorldOrigin) {
+        _orbitTarget = math::float3{0.0f, 0.0f, 0.0f};
+    } else {
+        _orbitTarget = _modelCenter;
+    }
+    const float radius = _hasModelBounds ? (float)LengthFloat3(_modelExtent) : 1.0f;
+    const double distance = [self computeDistanceForRadius:radius];
+    _distance = ClampValue(distance, _minDistance, _maxDistance);
+    _yawDeg = 0.0;
+    _pitchDeg = 0.0;
+}
+
+- (void)setOrbitConstraintsWithMinPitch:(double)minPitch
+                               maxPitch:(double)maxPitch
+                                minYaw:(double)minYaw
+                                maxYaw:(double)maxYaw {
+    _minPitchDeg = minPitch;
+    _maxPitchDeg = maxPitch;
+    _minYawDeg = minYaw;
+    _maxYawDeg = maxYaw;
+    [self clampAngles];
+}
+
+- (void)setInertiaEnabled:(BOOL)enabled {
+    _inertiaEnabled = enabled;
+}
+
+- (void)setInertiaParamsWithDamping:(double)damping sensitivity:(double)sensitivity {
+    _damping = damping;
+    _sensitivity = sensitivity;
+}
+
+- (void)setZoomLimitsWithMinDistance:(double)minDistance maxDistance:(double)maxDistance {
+    _minDistance = minDistance;
+    _maxDistance = maxDistance;
+    _distance = ClampValue(_distance, _minDistance, _maxDistance);
+}
+
+- (void)orbitStart {
+    _velocityYaw = 0.0;
+    _velocityPitch = 0.0;
+}
+
+- (void)orbitDeltaWithDx:(double)dx dy:(double)dy {
+    _yawDeg += dx * _sensitivity;
+    _pitchDeg += dy * _sensitivity;
+    [self clampAngles];
+}
+
+- (void)orbitEndWithVelocityX:(double)velocityX velocityY:(double)velocityY {
+    if (!_inertiaEnabled) {
+        _velocityYaw = 0.0;
+        _velocityPitch = 0.0;
+        return;
+    }
+    _velocityYaw = velocityX * _sensitivity;
+    _velocityPitch = velocityY * _sensitivity;
+}
+
+- (void)zoomDelta:(double)scaleDelta {
+    if (scaleDelta <= 0.0) {
+        return;
+    }
+    _distance = ClampValue(_distance / scaleDelta, _minDistance, _maxDistance);
+}
+
+- (void)setCustomCameraEnabled:(BOOL)enabled {
+    _customCameraEnabled = enabled;
+}
+
+- (void)setCustomCameraLookAtWithEyeX:(double)eyeX
+                                eyeY:(double)eyeY
+                                eyeZ:(double)eyeZ
+                              centerX:(double)centerX
+                              centerY:(double)centerY
+                              centerZ:(double)centerZ
+                                  upX:(double)upX
+                                  upY:(double)upY
+                                  upZ:(double)upZ {
+    _customLookAt[0] = eyeX;
+    _customLookAt[1] = eyeY;
+    _customLookAt[2] = eyeZ;
+    _customLookAt[3] = centerX;
+    _customLookAt[4] = centerY;
+    _customLookAt[5] = centerZ;
+    _customLookAt[6] = upX;
+    _customLookAt[7] = upY;
+    _customLookAt[8] = upZ;
+}
+
+- (void)setCustomPerspectiveWithFov:(double)fovDegrees
+                               near:(double)nearPlane
+                                far:(double)farPlane {
+    _customPerspective[0] = fovDegrees;
+    _customPerspective[1] = nearPlane;
+    _customPerspective[2] = farPlane;
 }
 
 - (void)clearScene {
@@ -166,6 +400,7 @@ void ReleaseBuffer(void* buffer, size_t, void*) {
     if (_renderer == nullptr || _swapChain == nullptr) {
         return;
     }
+    [self updateCamera:frameTimeNanos];
     if (_renderer->beginFrame(_swapChain, frameTimeNanos)) {
         _renderer->render(_view);
         _renderer->endFrame();
@@ -194,6 +429,22 @@ void ReleaseBuffer(void* buffer, size_t, void*) {
         _materialProvider->destroyMaterials();
         delete _materialProvider;
         _materialProvider = nullptr;
+    }
+    if (_indirectLight) {
+        _engine->destroy(_indirectLight);
+        _indirectLight = nullptr;
+    }
+    if (_iblTexture) {
+        _engine->destroy(_iblTexture);
+        _iblTexture = nullptr;
+    }
+    if (_skybox) {
+        _engine->destroy(_skybox);
+        _skybox = nullptr;
+    }
+    if (_skyboxTexture) {
+        _engine->destroy(_skyboxTexture);
+        _skyboxTexture = nullptr;
     }
     if (_swapChain) {
         _engine->destroy(_swapChain);
@@ -280,7 +531,7 @@ void ReleaseBuffer(void* buffer, size_t, void*) {
     _height = height > 0 ? height : 1;
     _view->setViewport({0, 0, (uint32_t)_width, (uint32_t)_height});
     const double aspect = (double)_width / (double)_height;
-    _camera->setProjection(45.0, aspect, 0.05, 100.0, Camera::Fov::VERTICAL);
+    _camera->setProjection(_cameraFovDegrees, aspect, _cameraNear, _cameraFar, Camera::Fov::VERTICAL);
 }
 
 - (void)clearSceneInternal {
@@ -293,6 +544,90 @@ void ReleaseBuffer(void* buffer, size_t, void*) {
         _assetLoader->destroyAsset(_pendingAsset);
         _pendingAsset = nullptr;
     }
+}
+
+- (double)computeDistanceForRadius:(double)radius {
+    const double halfFov = std::max(0.01, DegreesToRadians(_cameraFovDegrees) * 0.5);
+    const double minDistance = radius / std::sin(halfFov);
+    return std::max(minDistance, 0.05);
+}
+
+- (void)clampAngles {
+    _yawDeg = ClampValue(_yawDeg, _minYawDeg, _maxYawDeg);
+    _pitchDeg = ClampValue(_pitchDeg, _minPitchDeg, _maxPitchDeg);
+}
+
+- (void)updateCamera:(uint64_t)frameTimeNanos {
+    if (_camera == nullptr) {
+        return;
+    }
+    const double aspect = (double)_width / (double)_height;
+    if (_customCameraEnabled) {
+        _camera->setProjection(
+            _customPerspective[0],
+            aspect,
+            _customPerspective[1],
+            _customPerspective[2],
+            Camera::Fov::VERTICAL
+        );
+        _camera->lookAt(
+            math::double3{_customLookAt[0], _customLookAt[1], _customLookAt[2]},
+            math::double3{_customLookAt[3], _customLookAt[4], _customLookAt[5]},
+            math::double3{_customLookAt[6], _customLookAt[7], _customLookAt[8]}
+        );
+        return;
+    }
+
+    if (_lastFrameTimeNanos == 0) {
+        _lastFrameTimeNanos = frameTimeNanos;
+    } else {
+        const double deltaSeconds = (frameTimeNanos - _lastFrameTimeNanos) / 1e9;
+        _lastFrameTimeNanos = frameTimeNanos;
+        if (_inertiaEnabled) {
+            if (std::abs(_velocityYaw) < 0.0001 && std::abs(_velocityPitch) < 0.0001) {
+                _velocityYaw = 0.0;
+                _velocityPitch = 0.0;
+            } else {
+                _yawDeg += _velocityYaw * deltaSeconds;
+                _pitchDeg += _velocityPitch * deltaSeconds;
+                [self clampAngles];
+                const double decay = std::pow(_damping, deltaSeconds * 60.0);
+                _velocityYaw *= decay;
+                _velocityPitch *= decay;
+            }
+        }
+    }
+
+    const double yawRad = DegreesToRadians(_yawDeg);
+    const double pitchRad = DegreesToRadians(_pitchDeg);
+    const double cosPitch = std::cos(pitchRad);
+    const double sinPitch = std::sin(pitchRad);
+    const double sinYaw = std::sin(yawRad);
+    const double cosYaw = std::cos(yawRad);
+
+    const double x = _distance * cosPitch * sinYaw;
+    const double y = _distance * sinPitch;
+    const double z = _distance * cosPitch * cosYaw;
+
+    const math::double3 eye{_orbitTarget.x + x, _orbitTarget.y + y, _orbitTarget.z + z};
+    const math::double3 center{_orbitTarget.x, _orbitTarget.y, _orbitTarget.z};
+    _camera->lookAt(eye, center, math::double3{0.0, 1.0, 0.0});
+    _camera->setProjection(_cameraFovDegrees, aspect, _cameraNear, _cameraFar, Camera::Fov::VERTICAL);
+}
+
+- (void)updateBoundsFromAsset {
+    if (_asset == nullptr) {
+        _hasModelBounds = false;
+        return;
+    }
+    const filament::Aabb bounds = _asset->getBoundingBox();
+    if (bounds.isEmpty()) {
+        _hasModelBounds = false;
+        return;
+    }
+    _modelCenter = bounds.center();
+    _modelExtent = bounds.extent();
+    _hasModelBounds = true;
 }
 
 @end

@@ -17,6 +17,47 @@ NS_ASSUME_NONNULL_BEGIN
 
 - (void)finishModelLoad:(NSDictionary<NSString *, NSData *> *)resources;
 
+- (void)setIndirectLightFromKTX:(NSData *)data;
+
+- (void)setSkyboxFromKTX:(NSData *)data;
+
+- (void)frameModel:(BOOL)useWorldOrigin;
+
+- (void)setOrbitConstraintsWithMinPitch:(double)minPitch
+                               maxPitch:(double)maxPitch
+                                minYaw:(double)minYaw
+                                maxYaw:(double)maxYaw;
+
+- (void)setInertiaEnabled:(BOOL)enabled;
+
+- (void)setInertiaParamsWithDamping:(double)damping sensitivity:(double)sensitivity;
+
+- (void)setZoomLimitsWithMinDistance:(double)minDistance maxDistance:(double)maxDistance;
+
+- (void)orbitStart;
+
+- (void)orbitDeltaWithDx:(double)dx dy:(double)dy;
+
+- (void)orbitEndWithVelocityX:(double)velocityX velocityY:(double)velocityY;
+
+- (void)zoomDelta:(double)scaleDelta;
+
+- (void)setCustomCameraEnabled:(BOOL)enabled;
+
+- (void)setCustomCameraLookAtWithEyeX:(double)eyeX
+                                eyeY:(double)eyeY
+                                eyeZ:(double)eyeZ
+                              centerX:(double)centerX
+                              centerY:(double)centerY
+                              centerZ:(double)centerZ
+                                  upX:(double)upX
+                                  upY:(double)upY
+                                  upZ:(double)upZ;
+
+- (void)setCustomPerspectiveWithFov:(double)fovDegrees
+                               near:(double)nearPlane
+                                far:(double)farPlane;
+
 - (void)clearScene;
 
 - (void)renderFrame:(uint64_t)frameTimeNanos;

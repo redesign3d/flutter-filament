@@ -65,6 +65,42 @@ public class FilamentWidgetPlugin: NSObject, FlutterPlugin, FlutterStreamHandler
       handleCacheSize(call, result: result)
     case "clearCache":
       handleClearCache(call, result: result)
+    case "setIBLFromAsset":
+      handleSetIBLFromAsset(call, result: result)
+    case "setSkyboxFromAsset":
+      handleSetSkyboxFromAsset(call, result: result)
+    case "setIBLFromUrl":
+      handleSetIBLFromUrl(call, result: result)
+    case "setSkyboxFromUrl":
+      handleSetSkyboxFromUrl(call, result: result)
+    case "frameModel":
+      handleFrameModel(call, result: result)
+    case "setOrbitConstraints":
+      handleOrbitConstraints(call, result: result)
+    case "setInertiaEnabled":
+      handleInertiaEnabled(call, result: result)
+    case "setInertiaParams":
+      handleInertiaParams(call, result: result)
+    case "setZoomLimits":
+      handleZoomLimits(call, result: result)
+    case "setCustomCameraEnabled":
+      handleCustomCameraEnabled(call, result: result)
+    case "setCustomCameraLookAt":
+      handleCustomCameraLookAt(call, result: result)
+    case "setCustomPerspective":
+      handleCustomPerspective(call, result: result)
+    case "orbitStart":
+      handleOrbitStart(call, result: result)
+    case "orbitDelta":
+      handleOrbitDelta(call, result: result)
+    case "orbitEnd":
+      handleOrbitEnd(call, result: result)
+    case "zoomStart":
+      handleZoomStart(call, result: result)
+    case "zoomDelta":
+      handleZoomDelta(call, result: result)
+    case "zoomEnd":
+      handleZoomEnd(call, result: result)
     default:
       result(FlutterMethodNotImplemented)
     }
@@ -182,6 +218,192 @@ public class FilamentWidgetPlugin: NSObject, FlutterPlugin, FlutterStreamHandler
   private func handleClearCache(_ call: FlutterMethodCall, result: @escaping FlutterResult) {
     guard let controller = resolveController(call, result: result) else { return }
     controller.clearCache(result: result)
+  }
+
+  private func handleSetIBLFromAsset(_ call: FlutterMethodCall, result: @escaping FlutterResult) {
+    guard let controller = resolveController(call, result: result) else { return }
+    guard
+      let args = call.arguments as? [String: Any],
+      let ktxPath = args["ktxPath"] as? String
+    else {
+      result(FlutterError(code: "filament_error", message: "Missing ktxPath.", details: nil))
+      return
+    }
+    controller.setIBLFromAsset(ktxPath: ktxPath, result: result)
+  }
+
+  private func handleSetSkyboxFromAsset(_ call: FlutterMethodCall, result: @escaping FlutterResult) {
+    guard let controller = resolveController(call, result: result) else { return }
+    guard
+      let args = call.arguments as? [String: Any],
+      let ktxPath = args["ktxPath"] as? String
+    else {
+      result(FlutterError(code: "filament_error", message: "Missing ktxPath.", details: nil))
+      return
+    }
+    controller.setSkyboxFromAsset(ktxPath: ktxPath, result: result)
+  }
+
+  private func handleSetIBLFromUrl(_ call: FlutterMethodCall, result: @escaping FlutterResult) {
+    guard let controller = resolveController(call, result: result) else { return }
+    guard
+      let args = call.arguments as? [String: Any],
+      let url = args["url"] as? String
+    else {
+      result(FlutterError(code: "filament_error", message: "Missing url.", details: nil))
+      return
+    }
+    controller.setIBLFromUrl(urlString: url, result: result)
+  }
+
+  private func handleSetSkyboxFromUrl(_ call: FlutterMethodCall, result: @escaping FlutterResult) {
+    guard let controller = resolveController(call, result: result) else { return }
+    guard
+      let args = call.arguments as? [String: Any],
+      let url = args["url"] as? String
+    else {
+      result(FlutterError(code: "filament_error", message: "Missing url.", details: nil))
+      return
+    }
+    controller.setSkyboxFromUrl(urlString: url, result: result)
+  }
+
+  private func handleFrameModel(_ call: FlutterMethodCall, result: @escaping FlutterResult) {
+    guard let controller = resolveController(call, result: result) else { return }
+    let args = call.arguments as? [String: Any]
+    let useWorldOrigin = args?["useWorldOrigin"] as? Bool ?? false
+    controller.frameModel(useWorldOrigin: useWorldOrigin, result: result)
+  }
+
+  private func handleOrbitConstraints(_ call: FlutterMethodCall, result: @escaping FlutterResult) {
+    guard let controller = resolveController(call, result: result) else { return }
+    guard let args = call.arguments as? [String: Any] else {
+      result(FlutterError(code: "filament_error", message: "Missing orbit constraints.", details: nil))
+      return
+    }
+    let minPitch = args["minPitchDeg"] as? Double ?? -89.0
+    let maxPitch = args["maxPitchDeg"] as? Double ?? 89.0
+    let minYaw = args["minYawDeg"] as? Double ?? -180.0
+    let maxYaw = args["maxYawDeg"] as? Double ?? 180.0
+    controller.setOrbitConstraints(
+      minPitchDeg: minPitch,
+      maxPitchDeg: maxPitch,
+      minYawDeg: minYaw,
+      maxYawDeg: maxYaw,
+      result: result
+    )
+  }
+
+  private func handleInertiaEnabled(_ call: FlutterMethodCall, result: @escaping FlutterResult) {
+    guard let controller = resolveController(call, result: result) else { return }
+    let args = call.arguments as? [String: Any]
+    let enabled = args?["enabled"] as? Bool ?? true
+    controller.setInertiaEnabled(enabled, result: result)
+  }
+
+  private func handleInertiaParams(_ call: FlutterMethodCall, result: @escaping FlutterResult) {
+    guard let controller = resolveController(call, result: result) else { return }
+    let args = call.arguments as? [String: Any]
+    let damping = args?["damping"] as? Double ?? 0.9
+    let sensitivity = args?["sensitivity"] as? Double ?? 1.0
+    controller.setInertiaParams(damping: damping, sensitivity: sensitivity, result: result)
+  }
+
+  private func handleZoomLimits(_ call: FlutterMethodCall, result: @escaping FlutterResult) {
+    guard let controller = resolveController(call, result: result) else { return }
+    guard let args = call.arguments as? [String: Any] else {
+      result(FlutterError(code: "filament_error", message: "Missing zoom limits.", details: nil))
+      return
+    }
+    let minDistance = args["minDistance"] as? Double ?? 0.05
+    let maxDistance = args["maxDistance"] as? Double ?? 100.0
+    controller.setZoomLimits(minDistance: minDistance, maxDistance: maxDistance, result: result)
+  }
+
+  private func handleCustomCameraEnabled(_ call: FlutterMethodCall, result: @escaping FlutterResult) {
+    guard let controller = resolveController(call, result: result) else { return }
+    let args = call.arguments as? [String: Any]
+    let enabled = args?["enabled"] as? Bool ?? false
+    controller.setCustomCameraEnabled(enabled, result: result)
+  }
+
+  private func handleCustomCameraLookAt(_ call: FlutterMethodCall, result: @escaping FlutterResult) {
+    guard let controller = resolveController(call, result: result) else { return }
+    guard let args = call.arguments as? [String: Any] else {
+      result(FlutterError(code: "filament_error", message: "Missing camera lookAt data.", details: nil))
+      return
+    }
+    controller.setCustomCameraLookAt(
+      eyeX: args["eyeX"] as? Double ?? 0.0,
+      eyeY: args["eyeY"] as? Double ?? 0.0,
+      eyeZ: args["eyeZ"] as? Double ?? 3.0,
+      centerX: args["centerX"] as? Double ?? 0.0,
+      centerY: args["centerY"] as? Double ?? 0.0,
+      centerZ: args["centerZ"] as? Double ?? 0.0,
+      upX: args["upX"] as? Double ?? 0.0,
+      upY: args["upY"] as? Double ?? 1.0,
+      upZ: args["upZ"] as? Double ?? 0.0,
+      result: result
+    )
+  }
+
+  private func handleCustomPerspective(_ call: FlutterMethodCall, result: @escaping FlutterResult) {
+    guard let controller = resolveController(call, result: result) else { return }
+    guard let args = call.arguments as? [String: Any] else {
+      result(FlutterError(code: "filament_error", message: "Missing perspective data.", details: nil))
+      return
+    }
+    let fov = args["fovDegrees"] as? Double ?? 45.0
+    let near = args["near"] as? Double ?? 0.05
+    let far = args["far"] as? Double ?? 100.0
+    controller.setCustomPerspective(fovDegrees: fov, near: near, far: far, result: result)
+  }
+
+  private func handleOrbitStart(_ call: FlutterMethodCall, result: @escaping FlutterResult) {
+    guard let controller = resolveController(call, result: result) else { return }
+    controller.orbitStart(result: result)
+  }
+
+  private func handleOrbitDelta(_ call: FlutterMethodCall, result: @escaping FlutterResult) {
+    guard let controller = resolveController(call, result: result) else { return }
+    guard let args = call.arguments as? [String: Any] else {
+      result(FlutterError(code: "filament_error", message: "Missing orbit delta.", details: nil))
+      return
+    }
+    let dx = args["dx"] as? Double ?? 0.0
+    let dy = args["dy"] as? Double ?? 0.0
+    controller.orbitDelta(dx: dx, dy: dy, result: result)
+  }
+
+  private func handleOrbitEnd(_ call: FlutterMethodCall, result: @escaping FlutterResult) {
+    guard let controller = resolveController(call, result: result) else { return }
+    guard let args = call.arguments as? [String: Any] else {
+      result(FlutterError(code: "filament_error", message: "Missing orbit velocity.", details: nil))
+      return
+    }
+    let velocityX = args["velocityX"] as? Double ?? 0.0
+    let velocityY = args["velocityY"] as? Double ?? 0.0
+    controller.orbitEnd(velocityX: velocityX, velocityY: velocityY, result: result)
+  }
+
+  private func handleZoomStart(_ call: FlutterMethodCall, result: @escaping FlutterResult) {
+    guard let controller = resolveController(call, result: result) else { return }
+    controller.zoomStart(result: result)
+  }
+
+  private func handleZoomDelta(_ call: FlutterMethodCall, result: @escaping FlutterResult) {
+    guard let controller = resolveController(call, result: result) else { return }
+    guard let args = call.arguments as? [String: Any] else {
+      result(FlutterError(code: "filament_error", message: "Missing zoom delta.", details: nil))
+      return
+    }
+    let scaleDelta = args["scaleDelta"] as? Double ?? 1.0
+    controller.zoomDelta(scaleDelta: scaleDelta, result: result)
+  }
+
+  private func handleZoomEnd(_ call: FlutterMethodCall, result: @escaping FlutterResult) {
+    guard let controller = resolveController(call, result: result) else { return }
+    controller.zoomEnd(result: result)
   }
 
   private func resolveController(_ call: FlutterMethodCall, result: @escaping FlutterResult) -> FilamentController? {

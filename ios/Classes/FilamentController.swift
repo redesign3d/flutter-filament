@@ -140,6 +140,274 @@ final class FilamentController {
     }
   }
 
+  func setIBLFromAsset(ktxPath: String, result: @escaping FlutterResult) {
+    guard let renderer else {
+      result(FlutterError(code: "filament_error", message: "Viewer not initialized.", details: nil))
+      return
+    }
+    let key = assetLookup(ktxPath)
+    guard let url = Bundle.main.url(forResource: key, withExtension: nil) else {
+      result(FlutterError(code: "filament_error", message: "Asset not found: \(ktxPath)", details: nil))
+      return
+    }
+    DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+      guard let self else { return }
+      do {
+        let data = try Data(contentsOf: url)
+        self.renderLoop.perform {
+          renderer.setIndirectLightFromKTX(data)
+          DispatchQueue.main.async { result(nil) }
+        }
+      } catch {
+        self.emitError("Failed to load IBL asset: \(error.localizedDescription)", result: result)
+      }
+    }
+  }
+
+  func setSkyboxFromAsset(ktxPath: String, result: @escaping FlutterResult) {
+    guard let renderer else {
+      result(FlutterError(code: "filament_error", message: "Viewer not initialized.", details: nil))
+      return
+    }
+    let key = assetLookup(ktxPath)
+    guard let url = Bundle.main.url(forResource: key, withExtension: nil) else {
+      result(FlutterError(code: "filament_error", message: "Asset not found: \(ktxPath)", details: nil))
+      return
+    }
+    DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+      guard let self else { return }
+      do {
+        let data = try Data(contentsOf: url)
+        self.renderLoop.perform {
+          renderer.setSkyboxFromKTX(data)
+          DispatchQueue.main.async { result(nil) }
+        }
+      } catch {
+        self.emitError("Failed to load skybox asset: \(error.localizedDescription)", result: result)
+      }
+    }
+  }
+
+  func setIBLFromUrl(urlString: String, result: @escaping FlutterResult) {
+    guard let renderer else {
+      result(FlutterError(code: "filament_error", message: "Viewer not initialized.", details: nil))
+      return
+    }
+    guard let url = URL(string: urlString) else {
+      result(FlutterError(code: "filament_error", message: "Invalid URL.", details: nil))
+      return
+    }
+    DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+      guard let self else { return }
+      do {
+        let cached = try self.cacheManager.getOrDownload(url: url)
+        let data = try Data(contentsOf: cached)
+        self.renderLoop.perform {
+          renderer.setIndirectLightFromKTX(data)
+          DispatchQueue.main.async { result(nil) }
+        }
+      } catch {
+        self.emitError("Failed to load IBL URL: \(error.localizedDescription)", result: result)
+      }
+    }
+  }
+
+  func setSkyboxFromUrl(urlString: String, result: @escaping FlutterResult) {
+    guard let renderer else {
+      result(FlutterError(code: "filament_error", message: "Viewer not initialized.", details: nil))
+      return
+    }
+    guard let url = URL(string: urlString) else {
+      result(FlutterError(code: "filament_error", message: "Invalid URL.", details: nil))
+      return
+    }
+    DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+      guard let self else { return }
+      do {
+        let cached = try self.cacheManager.getOrDownload(url: url)
+        let data = try Data(contentsOf: cached)
+        self.renderLoop.perform {
+          renderer.setSkyboxFromKTX(data)
+          DispatchQueue.main.async { result(nil) }
+        }
+      } catch {
+        self.emitError("Failed to load skybox URL: \(error.localizedDescription)", result: result)
+      }
+    }
+  }
+
+  func frameModel(useWorldOrigin: Bool, result: @escaping FlutterResult) {
+    guard let renderer else {
+      result(nil)
+      return
+    }
+    renderLoop.perform {
+      renderer.frameModel(useWorldOrigin)
+      DispatchQueue.main.async { result(nil) }
+    }
+  }
+
+  func setOrbitConstraints(
+    minPitchDeg: Double,
+    maxPitchDeg: Double,
+    minYawDeg: Double,
+    maxYawDeg: Double,
+    result: @escaping FlutterResult
+  ) {
+    guard let renderer else {
+      result(nil)
+      return
+    }
+    renderLoop.perform {
+      renderer.setOrbitConstraintsWithMinPitch(
+        minPitchDeg,
+        maxPitch: maxPitchDeg,
+        minYaw: minYawDeg,
+        maxYaw: maxYawDeg
+      )
+      DispatchQueue.main.async { result(nil) }
+    }
+  }
+
+  func setInertiaEnabled(_ enabled: Bool, result: @escaping FlutterResult) {
+    guard let renderer else {
+      result(nil)
+      return
+    }
+    renderLoop.perform {
+      renderer.setInertiaEnabled(enabled)
+      DispatchQueue.main.async { result(nil) }
+    }
+  }
+
+  func setInertiaParams(damping: Double, sensitivity: Double, result: @escaping FlutterResult) {
+    guard let renderer else {
+      result(nil)
+      return
+    }
+    renderLoop.perform {
+      renderer.setInertiaParamsWithDamping(damping, sensitivity: sensitivity)
+      DispatchQueue.main.async { result(nil) }
+    }
+  }
+
+  func setZoomLimits(minDistance: Double, maxDistance: Double, result: @escaping FlutterResult) {
+    guard let renderer else {
+      result(nil)
+      return
+    }
+    renderLoop.perform {
+      renderer.setZoomLimitsWithMinDistance(minDistance, maxDistance: maxDistance)
+      DispatchQueue.main.async { result(nil) }
+    }
+  }
+
+  func setCustomCameraEnabled(_ enabled: Bool, result: @escaping FlutterResult) {
+    guard let renderer else {
+      result(nil)
+      return
+    }
+    renderLoop.perform {
+      renderer.setCustomCameraEnabled(enabled)
+      DispatchQueue.main.async { result(nil) }
+    }
+  }
+
+  func setCustomCameraLookAt(
+    eyeX: Double,
+    eyeY: Double,
+    eyeZ: Double,
+    centerX: Double,
+    centerY: Double,
+    centerZ: Double,
+    upX: Double,
+    upY: Double,
+    upZ: Double,
+    result: @escaping FlutterResult
+  ) {
+    guard let renderer else {
+      result(nil)
+      return
+    }
+    renderLoop.perform {
+      renderer.setCustomCameraLookAtWithEyeX(
+        eyeX,
+        eyeY: eyeY,
+        eyeZ: eyeZ,
+        centerX: centerX,
+        centerY: centerY,
+        centerZ: centerZ,
+        upX: upX,
+        upY: upY,
+        upZ: upZ
+      )
+      DispatchQueue.main.async { result(nil) }
+    }
+  }
+
+  func setCustomPerspective(fovDegrees: Double, near: Double, far: Double, result: @escaping FlutterResult) {
+    guard let renderer else {
+      result(nil)
+      return
+    }
+    renderLoop.perform {
+      renderer.setCustomPerspectiveWithFov(fovDegrees, near: near, far: far)
+      DispatchQueue.main.async { result(nil) }
+    }
+  }
+
+  func orbitStart(result: @escaping FlutterResult) {
+    guard let renderer else {
+      result(nil)
+      return
+    }
+    renderLoop.perform {
+      renderer.orbitStart()
+      DispatchQueue.main.async { result(nil) }
+    }
+  }
+
+  func orbitDelta(dx: Double, dy: Double, result: @escaping FlutterResult) {
+    guard let renderer else {
+      result(nil)
+      return
+    }
+    renderLoop.perform {
+      renderer.orbitDelta(withDx: dx, dy: dy)
+      DispatchQueue.main.async { result(nil) }
+    }
+  }
+
+  func orbitEnd(velocityX: Double, velocityY: Double, result: @escaping FlutterResult) {
+    guard let renderer else {
+      result(nil)
+      return
+    }
+    renderLoop.perform {
+      renderer.orbitEnd(withVelocityX: velocityX, velocityY: velocityY)
+      DispatchQueue.main.async { result(nil) }
+    }
+  }
+
+  func zoomStart(result: @escaping FlutterResult) {
+    result(nil)
+  }
+
+  func zoomDelta(scaleDelta: Double, result: @escaping FlutterResult) {
+    guard let renderer else {
+      result(nil)
+      return
+    }
+    renderLoop.perform {
+      renderer.zoomDelta(scaleDelta)
+      DispatchQueue.main.async { result(nil) }
+    }
+  }
+
+  func zoomEnd(result: @escaping FlutterResult) {
+    result(nil)
+  }
+
   func getCacheSizeBytes(result: @escaping FlutterResult) {
     DispatchQueue.global(qos: .utility).async { [cacheManager] in
       let size = cacheManager.getCacheSizeBytes()

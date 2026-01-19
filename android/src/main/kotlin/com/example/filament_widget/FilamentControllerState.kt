@@ -121,6 +121,251 @@ class FilamentControllerState(
         }
     }
 
+    fun setIBLFromAsset(assetPath: String, result: Result) {
+        val resolvedPath = flutterAssets.getAssetFilePathByName(assetPath)
+        ioExecutor.execute {
+            try {
+                val buffer = readAssetBuffer(resolvedPath)
+                renderThread.post {
+                    viewer?.setIndirectLightFromKtx(buffer)
+                    postSuccess(result)
+                }
+            } catch (e: Exception) {
+                postError(result, e.message ?: "Failed to load IBL asset.")
+            }
+        }
+    }
+
+    fun setSkyboxFromAsset(assetPath: String, result: Result) {
+        val resolvedPath = flutterAssets.getAssetFilePathByName(assetPath)
+        ioExecutor.execute {
+            try {
+                val buffer = readAssetBuffer(resolvedPath)
+                renderThread.post {
+                    viewer?.setSkyboxFromKtx(buffer)
+                    postSuccess(result)
+                }
+            } catch (e: Exception) {
+                postError(result, e.message ?: "Failed to load skybox asset.")
+            }
+        }
+    }
+
+    fun setIBLFromUrl(url: String, result: Result) {
+        ioExecutor.execute {
+            try {
+                val file = cacheManager.getOrDownload(url)
+                val buffer = readFileBuffer(file)
+                renderThread.post {
+                    viewer?.setIndirectLightFromKtx(buffer)
+                    postSuccess(result)
+                }
+            } catch (e: Exception) {
+                postError(result, e.message ?: "Failed to load IBL URL.")
+            }
+        }
+    }
+
+    fun setSkyboxFromUrl(url: String, result: Result) {
+        ioExecutor.execute {
+            try {
+                val file = cacheManager.getOrDownload(url)
+                val buffer = readFileBuffer(file)
+                renderThread.post {
+                    viewer?.setSkyboxFromKtx(buffer)
+                    postSuccess(result)
+                }
+            } catch (e: Exception) {
+                postError(result, e.message ?: "Failed to load skybox URL.")
+            }
+        }
+    }
+
+    fun frameModel(useWorldOrigin: Boolean, result: Result) {
+        val current = viewer
+        if (current == null) {
+            result.success(null)
+            return
+        }
+        renderThread.post {
+            current.frameModel(useWorldOrigin)
+            postSuccess(result)
+        }
+    }
+
+    fun setOrbitConstraints(
+        minPitchDeg: Double,
+        maxPitchDeg: Double,
+        minYawDeg: Double,
+        maxYawDeg: Double,
+        result: Result,
+    ) {
+        val current = viewer
+        if (current == null) {
+            result.success(null)
+            return
+        }
+        renderThread.post {
+            current.setOrbitConstraints(minPitchDeg, maxPitchDeg, minYawDeg, maxYawDeg)
+            postSuccess(result)
+        }
+    }
+
+    fun setInertiaEnabled(enabled: Boolean, result: Result) {
+        val current = viewer
+        if (current == null) {
+            result.success(null)
+            return
+        }
+        renderThread.post {
+            current.setInertiaEnabled(enabled)
+            postSuccess(result)
+        }
+    }
+
+    fun setInertiaParams(damping: Double, sensitivity: Double, result: Result) {
+        val current = viewer
+        if (current == null) {
+            result.success(null)
+            return
+        }
+        renderThread.post {
+            current.setInertiaParams(damping, sensitivity)
+            postSuccess(result)
+        }
+    }
+
+    fun setZoomLimits(minDistance: Double, maxDistance: Double, result: Result) {
+        val current = viewer
+        if (current == null) {
+            result.success(null)
+            return
+        }
+        renderThread.post {
+            current.setZoomLimits(minDistance, maxDistance)
+            postSuccess(result)
+        }
+    }
+
+    fun setCustomCameraEnabled(enabled: Boolean, result: Result) {
+        val current = viewer
+        if (current == null) {
+            result.success(null)
+            return
+        }
+        renderThread.post {
+            current.setCustomCameraEnabled(enabled)
+            postSuccess(result)
+        }
+    }
+
+    fun setCustomCameraLookAt(
+        eyeX: Double,
+        eyeY: Double,
+        eyeZ: Double,
+        centerX: Double,
+        centerY: Double,
+        centerZ: Double,
+        upX: Double,
+        upY: Double,
+        upZ: Double,
+        result: Result,
+    ) {
+        val current = viewer
+        if (current == null) {
+            result.success(null)
+            return
+        }
+        renderThread.post {
+            current.setCustomCameraLookAt(eyeX, eyeY, eyeZ, centerX, centerY, centerZ, upX, upY, upZ)
+            postSuccess(result)
+        }
+    }
+
+    fun setCustomPerspective(fov: Double, near: Double, far: Double, result: Result) {
+        val current = viewer
+        if (current == null) {
+            result.success(null)
+            return
+        }
+        renderThread.post {
+            current.setCustomPerspective(fov, near, far)
+            postSuccess(result)
+        }
+    }
+
+    fun orbitStart(result: Result) {
+        val current = viewer
+        if (current == null) {
+            result.success(null)
+            return
+        }
+        renderThread.post {
+            current.orbitStart()
+            postSuccess(result)
+        }
+    }
+
+    fun orbitDelta(dx: Double, dy: Double, result: Result) {
+        val current = viewer
+        if (current == null) {
+            result.success(null)
+            return
+        }
+        renderThread.post {
+            current.orbitDelta(dx, dy)
+            postSuccess(result)
+        }
+    }
+
+    fun orbitEnd(velocityX: Double, velocityY: Double, result: Result) {
+        val current = viewer
+        if (current == null) {
+            result.success(null)
+            return
+        }
+        renderThread.post {
+            current.orbitEnd(velocityX, velocityY)
+            postSuccess(result)
+        }
+    }
+
+    fun zoomStart(result: Result) {
+        val current = viewer
+        if (current == null) {
+            result.success(null)
+            return
+        }
+        renderThread.post {
+            current.zoomStart()
+            postSuccess(result)
+        }
+    }
+
+    fun zoomDelta(scaleDelta: Double, result: Result) {
+        val current = viewer
+        if (current == null) {
+            result.success(null)
+            return
+        }
+        renderThread.post {
+            current.zoomDelta(scaleDelta)
+            postSuccess(result)
+        }
+    }
+
+    fun zoomEnd(result: Result) {
+        val current = viewer
+        if (current == null) {
+            result.success(null)
+            return
+        }
+        renderThread.post {
+            current.zoomEnd()
+            postSuccess(result)
+        }
+    }
+
     fun getCacheSizeBytes(result: Result) {
         ioExecutor.execute {
             val size = cacheManager.getCacheSizeBytes()

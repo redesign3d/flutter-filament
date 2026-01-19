@@ -69,6 +69,24 @@ class FilamentWidgetPlugin :
             "loadModelFromUrl" -> handleLoadModelFromUrl(call, result)
             "getCacheSizeBytes" -> handleCacheSize(call, result)
             "clearCache" -> handleClearCache(call, result)
+            "setIBLFromAsset" -> handleSetIBLFromAsset(call, result)
+            "setSkyboxFromAsset" -> handleSetSkyboxFromAsset(call, result)
+            "setIBLFromUrl" -> handleSetIBLFromUrl(call, result)
+            "setSkyboxFromUrl" -> handleSetSkyboxFromUrl(call, result)
+            "frameModel" -> handleFrameModel(call, result)
+            "setOrbitConstraints" -> handleOrbitConstraints(call, result)
+            "setInertiaEnabled" -> handleInertiaEnabled(call, result)
+            "setInertiaParams" -> handleInertiaParams(call, result)
+            "setZoomLimits" -> handleZoomLimits(call, result)
+            "setCustomCameraEnabled" -> handleCustomCameraEnabled(call, result)
+            "setCustomCameraLookAt" -> handleCustomCameraLookAt(call, result)
+            "setCustomPerspective" -> handleCustomPerspective(call, result)
+            "orbitStart" -> handleOrbitStart(call, result)
+            "orbitDelta" -> handleOrbitDelta(call, result)
+            "orbitEnd" -> handleOrbitEnd(call, result)
+            "zoomStart" -> handleZoomStart(call, result)
+            "zoomDelta" -> handleZoomDelta(call, result)
+            "zoomEnd" -> handleZoomEnd(call, result)
             else -> result.notImplemented()
         }
     }
@@ -219,6 +237,155 @@ class FilamentWidgetPlugin :
     private fun handleClearCache(call: MethodCall, result: Result) {
         val controller = resolveController(call, result) ?: return
         controller.clearCache(result)
+    }
+
+    private fun handleSetIBLFromAsset(call: MethodCall, result: Result) {
+        val controller = resolveController(call, result) ?: return
+        val assetPath = call.argument<String>("ktxPath")
+        if (assetPath.isNullOrBlank()) {
+            result.error("filament_error", "Missing ktxPath.", null)
+            return
+        }
+        controller.setIBLFromAsset(assetPath, result)
+    }
+
+    private fun handleSetSkyboxFromAsset(call: MethodCall, result: Result) {
+        val controller = resolveController(call, result) ?: return
+        val assetPath = call.argument<String>("ktxPath")
+        if (assetPath.isNullOrBlank()) {
+            result.error("filament_error", "Missing ktxPath.", null)
+            return
+        }
+        controller.setSkyboxFromAsset(assetPath, result)
+    }
+
+    private fun handleSetIBLFromUrl(call: MethodCall, result: Result) {
+        val controller = resolveController(call, result) ?: return
+        val url = call.argument<String>("url")
+        if (url.isNullOrBlank()) {
+            result.error("filament_error", "Missing url.", null)
+            return
+        }
+        controller.setIBLFromUrl(url, result)
+    }
+
+    private fun handleSetSkyboxFromUrl(call: MethodCall, result: Result) {
+        val controller = resolveController(call, result) ?: return
+        val url = call.argument<String>("url")
+        if (url.isNullOrBlank()) {
+            result.error("filament_error", "Missing url.", null)
+            return
+        }
+        controller.setSkyboxFromUrl(url, result)
+    }
+
+    private fun handleFrameModel(call: MethodCall, result: Result) {
+        val controller = resolveController(call, result) ?: return
+        val useWorldOrigin = call.argument<Boolean>("useWorldOrigin") ?: false
+        controller.frameModel(useWorldOrigin, result)
+    }
+
+    private fun handleOrbitConstraints(call: MethodCall, result: Result) {
+        val controller = resolveController(call, result) ?: return
+        val minPitch = call.argument<Double>("minPitchDeg") ?: -89.0
+        val maxPitch = call.argument<Double>("maxPitchDeg") ?: 89.0
+        val minYaw = call.argument<Double>("minYawDeg") ?: -180.0
+        val maxYaw = call.argument<Double>("maxYawDeg") ?: 180.0
+        controller.setOrbitConstraints(minPitch, maxPitch, minYaw, maxYaw, result)
+    }
+
+    private fun handleInertiaEnabled(call: MethodCall, result: Result) {
+        val controller = resolveController(call, result) ?: return
+        val enabled = call.argument<Boolean>("enabled") ?: true
+        controller.setInertiaEnabled(enabled, result)
+    }
+
+    private fun handleInertiaParams(call: MethodCall, result: Result) {
+        val controller = resolveController(call, result) ?: return
+        val damping = call.argument<Double>("damping") ?: 0.9
+        val sensitivity = call.argument<Double>("sensitivity") ?: 0.15
+        controller.setInertiaParams(damping, sensitivity, result)
+    }
+
+    private fun handleZoomLimits(call: MethodCall, result: Result) {
+        val controller = resolveController(call, result) ?: return
+        val minDistance = call.argument<Double>("minDistance") ?: 0.05
+        val maxDistance = call.argument<Double>("maxDistance") ?: 100.0
+        controller.setZoomLimits(minDistance, maxDistance, result)
+    }
+
+    private fun handleCustomCameraEnabled(call: MethodCall, result: Result) {
+        val controller = resolveController(call, result) ?: return
+        val enabled = call.argument<Boolean>("enabled") ?: false
+        controller.setCustomCameraEnabled(enabled, result)
+    }
+
+    private fun handleCustomCameraLookAt(call: MethodCall, result: Result) {
+        val controller = resolveController(call, result) ?: return
+        val eyeX = call.argument<Double>("eyeX") ?: 0.0
+        val eyeY = call.argument<Double>("eyeY") ?: 0.0
+        val eyeZ = call.argument<Double>("eyeZ") ?: 3.0
+        val centerX = call.argument<Double>("centerX") ?: 0.0
+        val centerY = call.argument<Double>("centerY") ?: 0.0
+        val centerZ = call.argument<Double>("centerZ") ?: 0.0
+        val upX = call.argument<Double>("upX") ?: 0.0
+        val upY = call.argument<Double>("upY") ?: 1.0
+        val upZ = call.argument<Double>("upZ") ?: 0.0
+        controller.setCustomCameraLookAt(
+            eyeX,
+            eyeY,
+            eyeZ,
+            centerX,
+            centerY,
+            centerZ,
+            upX,
+            upY,
+            upZ,
+            result,
+        )
+    }
+
+    private fun handleCustomPerspective(call: MethodCall, result: Result) {
+        val controller = resolveController(call, result) ?: return
+        val fov = call.argument<Double>("fovDegrees") ?: 45.0
+        val near = call.argument<Double>("near") ?: 0.05
+        val far = call.argument<Double>("far") ?: 100.0
+        controller.setCustomPerspective(fov, near, far, result)
+    }
+
+    private fun handleOrbitStart(call: MethodCall, result: Result) {
+        val controller = resolveController(call, result) ?: return
+        controller.orbitStart(result)
+    }
+
+    private fun handleOrbitDelta(call: MethodCall, result: Result) {
+        val controller = resolveController(call, result) ?: return
+        val dx = call.argument<Double>("dx") ?: 0.0
+        val dy = call.argument<Double>("dy") ?: 0.0
+        controller.orbitDelta(dx, dy, result)
+    }
+
+    private fun handleOrbitEnd(call: MethodCall, result: Result) {
+        val controller = resolveController(call, result) ?: return
+        val velocityX = call.argument<Double>("velocityX") ?: 0.0
+        val velocityY = call.argument<Double>("velocityY") ?: 0.0
+        controller.orbitEnd(velocityX, velocityY, result)
+    }
+
+    private fun handleZoomStart(call: MethodCall, result: Result) {
+        val controller = resolveController(call, result) ?: return
+        controller.zoomStart(result)
+    }
+
+    private fun handleZoomDelta(call: MethodCall, result: Result) {
+        val controller = resolveController(call, result) ?: return
+        val scaleDelta = call.argument<Double>("scaleDelta") ?: 1.0
+        controller.zoomDelta(scaleDelta, result)
+    }
+
+    private fun handleZoomEnd(call: MethodCall, result: Result) {
+        val controller = resolveController(call, result) ?: return
+        controller.zoomEnd(result)
     }
 
     private fun resolveController(call: MethodCall, result: Result): FilamentControllerState? {
