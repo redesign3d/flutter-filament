@@ -1,0 +1,239 @@
+package com.example.filament_widget
+
+import android.content.Context
+import android.os.Handler
+import android.view.Surface
+import io.flutter.embedding.engine.plugins.FlutterPlugin.FlutterAssets
+import io.flutter.plugin.common.MethodChannel.Result
+import io.flutter.view.TextureRegistry
+import java.io.File
+import java.nio.ByteBuffer
+import java.nio.ByteOrder
+import java.util.concurrent.ExecutorService
+
+class FilamentControllerState(
+    private val controllerId: Int,
+    private val context: Context,
+    private val flutterAssets: FlutterAssets,
+    private val textureRegistry: TextureRegistry,
+    private val renderThread: FilamentRenderThread,
+    private val ioExecutor: ExecutorService,
+    private val mainHandler: Handler,
+    private val cacheManager: FilamentCacheManager,
+    private val eventEmitter: (String, String) -> Unit,
+) {
+    private var viewer: FilamentViewer? = null
+
+    fun createViewer(width: Int, height: Int, result: Result) {
+        if (viewer != null) {
+            disposeViewer()
+        }
+        val entry = textureRegistry.createSurfaceTexture()
+        entry.surfaceTexture().setDefaultBufferSize(width, height)
+        val surface = Surface(entry.surfaceTexture())
+        val newViewer = FilamentViewer(entry, surface, eventEmitter)
+        viewer = newViewer
+        renderThread.addViewer(newViewer)
+        renderThread.post { newViewer.resize(width, height) }
+        result.success(newViewer.textureId())
+    }
+
+    fun resize(width: Int, height: Int, result: Result) {
+        val current = viewer
+        if (current == null) {
+            result.success(null)
+            return
+        }
+        current.setBufferSize(width, height)
+        renderThread.post { current.resize(width, height) }
+        result.success(null)
+    }
+
+    fun clearScene(result: Result) {
+        val current = viewer
+        if (current == null) {
+            result.success(null)
+            return
+        }
+        renderThread.post {
+            current.clearScene()
+            postSuccess(result)
+        }
+    }
+
+    fun loadModelFromAsset(assetPath: String, result: Result) {
+        val resolvedPath = flutterAssets.getAssetFilePathByName(assetPath)
+        val baseDir = resolvedPath.substringBeforeLast('/', "")
+        ioExecutor.execute {
+            try {
+                val buffer = readAssetBuffer(resolvedPath)
+                renderThread.post {
+                    val current = viewer
+                    if (current == null) {
+                        postError(result, "Viewer not initialized.")
+                        return@post
+                    }
+                    val resourceUris = current.beginModelLoad(buffer)
+                    if (resourceUris == null) {
+                        postError(result, "Failed to parse glTF asset.")
+                        return@post
+                    }
+                    if (resourceUris.isEmpty()) {
+                        current.finishModelLoad(emptyMap())
+                        postSuccess(result)
+                    } else {
+                        loadAssetResourcesAsync(baseDir, resourceUris, current, result)
+                    }
+                }
+            } catch (e: Exception) {
+                postError(result, e.message ?: "Failed to load asset.")
+            }
+        }
+    }
+
+    fun loadModelFromUrl(url: String, result: Result) {
+        ioExecutor.execute {
+            try {
+                val file = cacheManager.getOrDownload(url)
+                val buffer = readFileBuffer(file)
+                val baseUrl = url.substringBeforeLast("/")
+                renderThread.post {
+                    val current = viewer
+                    if (current == null) {
+                        postError(result, "Viewer not initialized.")
+                        return@post
+                    }
+                    val resourceUris = current.beginModelLoad(buffer)
+                    if (resourceUris == null) {
+                        postError(result, "Failed to parse glTF asset.")
+                        return@post
+                    }
+                    if (resourceUris.isEmpty()) {
+                        current.finishModelLoad(emptyMap())
+                        postSuccess(result)
+                    } else {
+                        loadUrlResourcesAsync(baseUrl, resourceUris, current, result)
+                    }
+                }
+            } catch (e: Exception) {
+                postError(result, e.message ?: "Failed to load URL.")
+            }
+        }
+    }
+
+    fun getCacheSizeBytes(result: Result) {
+        ioExecutor.execute {
+            val size = cacheManager.getCacheSizeBytes()
+            mainHandler.post { result.success(size) }
+        }
+    }
+
+    fun clearCache(result: Result) {
+        ioExecutor.execute {
+            val success = cacheManager.clearCache()
+            if (success) {
+                postSuccess(result)
+            } else {
+                postError(result, "Failed to clear cache.")
+            }
+        }
+    }
+
+    fun dispose(result: Result) {
+        disposeViewer()
+        postSuccess(result)
+    }
+
+    fun disposeViewer() {
+        val current = viewer ?: return
+        renderThread.removeViewer(current)
+        renderThread.post { current.destroy() }
+        viewer = null
+    }
+
+    private fun loadAssetResourcesAsync(
+        baseDir: String,
+        resourceUris: List<String>,
+        current: FilamentViewer,
+        result: Result,
+    ) {
+        ioExecutor.execute {
+            try {
+                val resources = mutableMapOf<String, ByteBuffer>()
+                for (uri in resourceUris) {
+                    if (uri.startsWith("data:")) {
+                        continue
+                    }
+                    val assetPath = if (baseDir.isEmpty()) uri else "$baseDir/$uri"
+                    resources[uri] = readAssetBuffer(assetPath)
+                }
+                renderThread.post {
+                    current.finishModelLoad(resources)
+                    postSuccess(result)
+                }
+            } catch (e: Exception) {
+                postError(result, e.message ?: "Failed to load glTF resources.")
+            }
+        }
+    }
+
+    private fun loadUrlResourcesAsync(
+        baseUrl: String,
+        resourceUris: List<String>,
+        current: FilamentViewer,
+        result: Result,
+    ) {
+        ioExecutor.execute {
+            try {
+                val resources = mutableMapOf<String, ByteBuffer>()
+                for (uri in resourceUris) {
+                    if (uri.startsWith("data:")) {
+                        continue
+                    }
+                    val resourceUrl = if (uri.startsWith("http://") || uri.startsWith("https://")) {
+                        uri
+                    } else {
+                        "$baseUrl/$uri"
+                    }
+                    val resourceFile = cacheManager.getOrDownload(resourceUrl)
+                    resources[uri] = readFileBuffer(resourceFile)
+                }
+                renderThread.post {
+                    current.finishModelLoad(resources)
+                    postSuccess(result)
+                }
+            } catch (e: Exception) {
+                postError(result, e.message ?: "Failed to load glTF resources.")
+            }
+        }
+    }
+
+    private fun readAssetBuffer(assetPath: String): ByteBuffer {
+        context.assets.open(assetPath).use { input ->
+            val bytes = input.readBytes()
+            return bytes.toDirectBuffer()
+        }
+    }
+
+    private fun readFileBuffer(file: File): ByteBuffer {
+        val bytes = file.readBytes()
+        return bytes.toDirectBuffer()
+    }
+
+    private fun ByteArray.toDirectBuffer(): ByteBuffer {
+        val buffer = ByteBuffer.allocateDirect(size)
+        buffer.order(ByteOrder.nativeOrder())
+        buffer.put(this)
+        buffer.flip()
+        return buffer
+    }
+
+    private fun postSuccess(result: Result) {
+        mainHandler.post { result.success(null) }
+    }
+
+    private fun postError(result: Result, message: String) {
+        eventEmitter("error", message)
+        mainHandler.post { result.error("filament_error", message, null) }
+    }
+}

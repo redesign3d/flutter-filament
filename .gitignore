@@ -31,3 +31,4 @@ migrate_working_dir/
 .flutter-plugins
 .flutter-plugins-dependencies
 build/
+tooling/filament-android-maven/
