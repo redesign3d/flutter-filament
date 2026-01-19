@@ -474,6 +474,50 @@ final class FilamentController {
     }
   }
 
+  func setMsaa(samples: Int, result: @escaping FlutterResult) {
+    guard let renderer else {
+      result(nil)
+      return
+    }
+    renderLoop.perform {
+      renderer.setMsaa(Int32(samples))
+      DispatchQueue.main.async { result(nil) }
+    }
+  }
+
+  func setDynamicResolutionEnabled(_ enabled: Bool, result: @escaping FlutterResult) {
+    guard let renderer else {
+      result(nil)
+      return
+    }
+    renderLoop.perform {
+      renderer.setDynamicResolutionEnabled(enabled)
+      DispatchQueue.main.async { result(nil) }
+    }
+  }
+
+  func setToneMappingFilmic(result: @escaping FlutterResult) {
+    guard let renderer else {
+      result(nil)
+      return
+    }
+    renderLoop.perform {
+      renderer.setToneMappingFilmic()
+      DispatchQueue.main.async { result(nil) }
+    }
+  }
+
+  func setShadowsEnabled(_ enabled: Bool, result: @escaping FlutterResult) {
+    guard let renderer else {
+      result(nil)
+      return
+    }
+    renderLoop.perform {
+      renderer.setShadowsEnabled(enabled)
+      DispatchQueue.main.async { result(nil) }
+    }
+  }
+
   func getCacheSizeBytes(result: @escaping FlutterResult) {
     DispatchQueue.global(qos: .utility).async { [cacheManager] in
       let size = cacheManager.getCacheSizeBytes()

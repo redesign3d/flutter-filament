@@ -101,6 +101,14 @@ public class FilamentWidgetPlugin: NSObject, FlutterPlugin, FlutterStreamHandler
       handleSetAnimationSpeed(call, result: result)
     case "getAnimationDuration":
       handleGetAnimationDuration(call, result: result)
+    case "setMsaa":
+      handleSetMsaa(call, result: result)
+    case "setDynamicResolutionEnabled":
+      handleSetDynamicResolutionEnabled(call, result: result)
+    case "setToneMappingFilmic":
+      handleSetToneMappingFilmic(call, result: result)
+    case "setShadowsEnabled":
+      handleSetShadowsEnabled(call, result: result)
     case "orbitStart":
       handleOrbitStart(call, result: result)
     case "orbitDelta":
@@ -411,6 +419,32 @@ public class FilamentWidgetPlugin: NSObject, FlutterPlugin, FlutterStreamHandler
     let args = call.arguments as? [String: Any]
     let index = args?["index"] as? Int ?? 0
     controller.getAnimationDuration(index: index, result: result)
+  }
+
+  private func handleSetMsaa(_ call: FlutterMethodCall, result: @escaping FlutterResult) {
+    guard let controller = resolveController(call, result: result) else { return }
+    let args = call.arguments as? [String: Any]
+    let samples = args?["samples"] as? Int ?? 2
+    controller.setMsaa(samples: samples, result: result)
+  }
+
+  private func handleSetDynamicResolutionEnabled(_ call: FlutterMethodCall, result: @escaping FlutterResult) {
+    guard let controller = resolveController(call, result: result) else { return }
+    let args = call.arguments as? [String: Any]
+    let enabled = args?["enabled"] as? Bool ?? true
+    controller.setDynamicResolutionEnabled(enabled, result: result)
+  }
+
+  private func handleSetToneMappingFilmic(_ call: FlutterMethodCall, result: @escaping FlutterResult) {
+    guard let controller = resolveController(call, result: result) else { return }
+    controller.setToneMappingFilmic(result: result)
+  }
+
+  private func handleSetShadowsEnabled(_ call: FlutterMethodCall, result: @escaping FlutterResult) {
+    guard let controller = resolveController(call, result: result) else { return }
+    let args = call.arguments as? [String: Any]
+    let enabled = args?["enabled"] as? Bool ?? true
+    controller.setShadowsEnabled(enabled, result: result)
   }
 
   private func handleOrbitStart(_ call: FlutterMethodCall, result: @escaping FlutterResult) {

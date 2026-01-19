@@ -58,6 +58,14 @@ NS_ASSUME_NONNULL_BEGIN
                                near:(double)nearPlane
                                 far:(double)farPlane;
 
+- (void)setMsaa:(int)samples;
+
+- (void)setDynamicResolutionEnabled:(BOOL)enabled;
+
+- (void)setToneMappingFilmic;
+
+- (void)setShadowsEnabled:(BOOL)enabled;
+
 - (int)getAnimationCount;
 
 - (double)getAnimationDuration:(int)index;

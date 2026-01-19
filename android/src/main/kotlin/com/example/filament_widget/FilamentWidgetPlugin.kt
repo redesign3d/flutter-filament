@@ -87,6 +87,10 @@ class FilamentWidgetPlugin :
             "seekAnimation" -> handleSeekAnimation(call, result)
             "setAnimationSpeed" -> handleSetAnimationSpeed(call, result)
             "getAnimationDuration" -> handleGetAnimationDuration(call, result)
+            "setMsaa" -> handleSetMsaa(call, result)
+            "setDynamicResolutionEnabled" -> handleSetDynamicResolutionEnabled(call, result)
+            "setToneMappingFilmic" -> handleSetToneMappingFilmic(call, result)
+            "setShadowsEnabled" -> handleSetShadowsEnabled(call, result)
             "orbitStart" -> handleOrbitStart(call, result)
             "orbitDelta" -> handleOrbitDelta(call, result)
             "orbitEnd" -> handleOrbitEnd(call, result)
@@ -392,6 +396,29 @@ class FilamentWidgetPlugin :
         val controller = resolveController(call, result) ?: return
         val index = call.argument<Number>("index")?.toInt() ?: 0
         controller.getAnimationDuration(index, result)
+    }
+
+    private fun handleSetMsaa(call: MethodCall, result: Result) {
+        val controller = resolveController(call, result) ?: return
+        val samples = call.argument<Number>("samples")?.toInt() ?: 2
+        controller.setMsaa(samples, result)
+    }
+
+    private fun handleSetDynamicResolutionEnabled(call: MethodCall, result: Result) {
+        val controller = resolveController(call, result) ?: return
+        val enabled = call.argument<Boolean>("enabled") ?: true
+        controller.setDynamicResolutionEnabled(enabled, result)
+    }
+
+    private fun handleSetToneMappingFilmic(call: MethodCall, result: Result) {
+        val controller = resolveController(call, result) ?: return
+        controller.setToneMappingFilmic(result)
+    }
+
+    private fun handleSetShadowsEnabled(call: MethodCall, result: Result) {
+        val controller = resolveController(call, result) ?: return
+        val enabled = call.argument<Boolean>("enabled") ?: true
+        controller.setShadowsEnabled(enabled, result)
     }
 
     private fun handleOrbitStart(call: MethodCall, result: Result) {

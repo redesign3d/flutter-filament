@@ -9,6 +9,7 @@
 #include <cmath>
 #include <filament/Camera.h>
 #include <filament/Box.h>
+#include <filament/ColorGrading.h>
 #include <filament/Engine.h>
 #include <filament/LightManager.h>
 #include <filament/IndirectLight.h>
@@ -101,6 +102,9 @@ double LengthFloat3(const math::float3& value) {
     double _cameraFovDegrees;
     double _cameraNear;
     double _cameraFar;
+    ColorGrading* _colorGrading;
+    int _msaaSamples;
+    bool _dynamicResolutionEnabled;
     int _animationIndex;
     bool _animationLoop;
     bool _animationPlaying;
@@ -168,6 +172,9 @@ double LengthFloat3(const math::float3& value) {
         _cameraFovDegrees = 45.0;
         _cameraNear = 0.05;
         _cameraFar = 100.0;
+        _colorGrading = nullptr;
+        _msaaSamples = 2;
+        _dynamicResolutionEnabled = true;
         _animationIndex = 0;
         _animationLoop = true;
         _animationPlaying = false;
@@ -202,6 +209,10 @@ double LengthFloat3(const math::float3& value) {
         clearOptions.clear = true;
         clearOptions.clearColor = {0.0f, 0.0f, 0.0f, 0.0f};
         _renderer->setClearOptions(clearOptions);
+        _view->setSampleCount((uint8_t)_msaaSamples);
+        [self setDynamicResolutionEnabled:_dynamicResolutionEnabled];
+        [self setToneMappingFilmic];
+        _view->setShadowingEnabled(true);
     }
     [self updateSwapChain:pixelBuffer width:width height:height];
 }
@@ -409,6 +420,50 @@ double LengthFloat3(const math::float3& value) {
     _customPerspective[2] = farPlane;
 }
 
+- (void)setMsaa:(int)samples {
+    if (samples == 2 || samples == 4) {
+        _msaaSamples = samples;
+    } else {
+        _msaaSamples = 1;
+    }
+    if (_view) {
+        _view->setSampleCount((uint8_t)_msaaSamples);
+    }
+}
+
+- (void)setDynamicResolutionEnabled:(BOOL)enabled {
+    _dynamicResolutionEnabled = enabled;
+    if (!_view) {
+        return;
+    }
+    View::DynamicResolutionOptions options = _view->getDynamicResolutionOptions();
+    options.enabled = enabled;
+    options.minScale = 0.5f;
+    options.maxScale = 1.0f;
+    options.sharpness = 0.9f;
+    _view->setDynamicResolutionOptions(options);
+}
+
+- (void)setToneMappingFilmic {
+    if (!_view) {
+        return;
+    }
+    if (_colorGrading) {
+        _engine->destroy(_colorGrading);
+        _colorGrading = nullptr;
+    }
+    _colorGrading = ColorGrading::Builder()
+        .toneMapping(ColorGrading::ToneMapping::FILMIC)
+        .build(*_engine);
+    _view->setColorGrading(_colorGrading);
+}
+
+- (void)setShadowsEnabled:(BOOL)enabled {
+    if (_view) {
+        _view->setShadowingEnabled(enabled);
+    }
+}
+
 - (int)getAnimationCount {
     return _animator ? (int)_animator->getAnimationCount() : 0;
 }
@@ -513,6 +568,10 @@ double LengthFloat3(const math::float3& value) {
     if (_skyboxTexture) {
         _engine->destroy(_skyboxTexture);
         _skyboxTexture = nullptr;
+    }
+    if (_colorGrading) {
+        _engine->destroy(_colorGrading);
+        _colorGrading = nullptr;
     }
     if (_swapChain) {
         _engine->destroy(_swapChain);

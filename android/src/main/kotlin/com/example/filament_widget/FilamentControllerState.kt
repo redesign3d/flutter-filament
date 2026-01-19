@@ -366,6 +366,54 @@ class FilamentControllerState(
         }
     }
 
+    fun setMsaa(samples: Int, result: Result) {
+        val current = viewer
+        if (current == null) {
+            result.success(null)
+            return
+        }
+        renderThread.post {
+            current.setMsaa(samples)
+            postSuccess(result)
+        }
+    }
+
+    fun setDynamicResolutionEnabled(enabled: Boolean, result: Result) {
+        val current = viewer
+        if (current == null) {
+            result.success(null)
+            return
+        }
+        renderThread.post {
+            current.setDynamicResolutionEnabled(enabled)
+            postSuccess(result)
+        }
+    }
+
+    fun setToneMappingFilmic(result: Result) {
+        val current = viewer
+        if (current == null) {
+            result.success(null)
+            return
+        }
+        renderThread.post {
+            current.setToneMappingFilmic()
+            postSuccess(result)
+        }
+    }
+
+    fun setShadowsEnabled(enabled: Boolean, result: Result) {
+        val current = viewer
+        if (current == null) {
+            result.success(null)
+            return
+        }
+        renderThread.post {
+            current.setShadowsEnabled(enabled)
+            postSuccess(result)
+        }
+    }
+
     fun orbitStart(result: Result) {
         val current = viewer
         if (current == null) {

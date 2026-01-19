@@ -2,6 +2,7 @@ package com.example.filament_widget
 
 import android.view.Surface
 import com.google.android.filament.Camera
+import com.google.android.filament.ColorGrading
 import com.google.android.filament.EntityManager
 import com.google.android.filament.Engine
 import com.google.android.filament.IndirectLight
@@ -55,6 +56,15 @@ class FilamentViewer(
     private var paused = false
     private var viewportWidth = 1
     private var viewportHeight = 1
+    private var msaaSamples = 2
+    private var dynamicResolutionEnabled = true
+    private val dynamicResolutionOptions = View.DynamicResolutionOptions().apply {
+        minScale = 0.5f
+        maxScale = 1.0f
+        sharpness = 0.9f
+        enabled = true
+    }
+    private var colorGrading: ColorGrading? = null
     private val orbitController = OrbitCameraController()
     private var cameraFovDegrees = 45.0
     private var cameraNear = 0.05
@@ -69,6 +79,10 @@ class FilamentViewer(
     init {
         view.camera = camera
         view.scene = scene
+        view.setSampleCount(msaaSamples)
+        applyDynamicResolution()
+        setToneMappingFilmic()
+        view.setShadowingEnabled(true)
         setupLight()
         ensureAssetLoader()
         swapChain = engine.createSwapChain(surface)
@@ -174,10 +188,12 @@ class FilamentViewer(
         indirectLightCubemap?.let { engine.destroyTexture(it) }
         skybox?.let { engine.destroySkybox(it) }
         skyboxCubemap?.let { engine.destroyTexture(it) }
+        colorGrading?.let { engine.destroyColorGrading(it) }
         indirectLight = null
         indirectLightCubemap = null
         skybox = null
         skyboxCubemap = null
+        colorGrading = null
         swapChain?.let { engine.destroySwapChain(it) }
         swapChain = null
         engine.destroyRenderer(renderer)
@@ -290,6 +306,33 @@ class FilamentViewer(
 
     fun setAnimationSpeed(speed: Double) {
         animationSpeed = speed
+    }
+
+    fun setMsaa(samples: Int) {
+        msaaSamples = when (samples) {
+            2 -> 2
+            4 -> 4
+            else -> 1
+        }
+        view.setSampleCount(msaaSamples)
+    }
+
+    fun setDynamicResolutionEnabled(enabled: Boolean) {
+        dynamicResolutionEnabled = enabled
+        applyDynamicResolution()
+    }
+
+    fun setToneMappingFilmic() {
+        val grading = ColorGrading.Builder()
+            .toneMapping(ColorGrading.ToneMapping.FILMIC)
+            .build(engine)
+        colorGrading?.let { engine.destroyColorGrading(it) }
+        colorGrading = grading
+        view.setColorGrading(grading)
+    }
+
+    fun setShadowsEnabled(enabled: Boolean) {
+        view.setShadowingEnabled(enabled)
     }
 
     fun setCustomCameraEnabled(enabled: Boolean) {
@@ -406,6 +449,11 @@ class FilamentViewer(
             0.0,
         )
         updateProjection()
+    }
+
+    private fun applyDynamicResolution() {
+        dynamicResolutionOptions.enabled = dynamicResolutionEnabled
+        view.setDynamicResolutionOptions(dynamicResolutionOptions)
     }
 
     private fun updateAnimation(frameTimeNanos: Long) {
