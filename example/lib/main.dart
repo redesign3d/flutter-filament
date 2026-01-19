@@ -236,7 +236,7 @@ class _ModelSection extends StatelessWidget {
                   FilledButton.icon(
                     onPressed: state.isLoading ? null : cubit.loadAssetGlb,
                     icon: const Icon(Icons.inventory_2),
-                    label: const Text('Load DamagedHelmet'),
+                    label: const Text('Load Avocado (GLB)'),
                   ),
                   OutlinedButton.icon(
                     onPressed: state.isLoading ? null : cubit.loadAssetGltf,
@@ -246,7 +246,7 @@ class _ModelSection extends StatelessWidget {
                   FilledButton.icon(
                     onPressed: state.isLoading ? null : cubit.loadRemoteGlb,
                     icon: const Icon(Icons.cloud_download),
-                    label: const Text('Load FlightHelmet URL'),
+                    label: const Text('Load BoxTextured URL'),
                   ),
                 ],
               ),

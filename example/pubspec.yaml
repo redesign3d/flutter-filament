@@ -58,7 +58,7 @@ flutter:
 
   # To add assets to your application, add an assets section, like this:
   assets:
-    - assets/models/DamagedHelmet.glb
+    - assets/models/Avocado.glb
     - assets/models/BoomBox/BoomBox.gltf
     - assets/models/BoomBox/BoomBox.bin
     - assets/models/BoomBox/BoomBox_baseColor.png

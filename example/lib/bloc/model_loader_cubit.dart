@@ -4,10 +4,10 @@ import 'package:equatable/equatable.dart';
 import 'package:filament_widget/filament_widget.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
-const String kAssetGlbPath = 'assets/models/DamagedHelmet.glb';
+const String kAssetGlbPath = 'assets/models/Avocado.glb';
 const String kAssetGltfPath = 'assets/models/BoomBox/BoomBox.gltf';
 const String kRemoteGlbUrl =
-    'https://raw.githubusercontent.com/KhronosGroup/glTF-Sample-Models/master/2.0/FlightHelmet/glTF-Binary/FlightHelmet.glb';
+    'https://raw.githubusercontent.com/KhronosGroup/glTF-Sample-Models/master/2.0/BoxTextured/glTF-Binary/BoxTextured.glb';
 const String kIblAssetPath = 'assets/envs/filament_env_ibl.ktx';
 const String kSkyboxAssetPath = 'assets/envs/filament_env_skybox.ktx';
 
@@ -74,7 +74,7 @@ class ModelLoaderCubit extends Cubit<ModelLoaderState> {
 
   Future<void> loadAssetGlb() async {
     await _loadModel(
-      label: 'DamagedHelmet (GLB asset)',
+      label: 'Avocado (GLB asset)',
       load: () => _controller.loadModelFromAsset(kAssetGlbPath),
     );
   }
@@ -92,8 +92,8 @@ class ModelLoaderCubit extends Cubit<ModelLoaderState> {
     await _loadModel(
       label:
           cached
-              ? 'FlightHelmet (URL cache hit)'
-              : 'FlightHelmet (URL download + cache)',
+              ? 'BoxTextured (URL cache hit)'
+              : 'BoxTextured (URL download + cache)',
       load: () => _controller.loadModelFromUrl(kRemoteGlbUrl),
       lastLoadFromCache: cached,
     );
