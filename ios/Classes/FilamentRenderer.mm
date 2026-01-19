@@ -19,6 +19,7 @@
 #include <filament/Texture.h>
 #include <filament/View.h>
 #include <filament/Viewport.h>
+#include <gltfio/Animator.h>
 #include <gltfio/AssetLoader.h>
 #include <gltfio/FilamentAsset.h>
 #include <gltfio/MaterialProvider.h>
@@ -73,6 +74,7 @@ double LengthFloat3(const math::float3& value) {
     ResourceLoader* _resourceLoader;
     FilamentAsset* _asset;
     FilamentAsset* _pendingAsset;
+    Animator* _animator;
     IndirectLight* _indirectLight;
     Texture* _iblTexture;
     Skybox* _skybox;
@@ -99,6 +101,12 @@ double LengthFloat3(const math::float3& value) {
     double _cameraFovDegrees;
     double _cameraNear;
     double _cameraFar;
+    int _animationIndex;
+    bool _animationLoop;
+    bool _animationPlaying;
+    double _animationTimeSeconds;
+    double _animationSpeed;
+    uint64_t _lastAnimationFrameNanos;
     math::float3 _modelCenter;
     math::float3 _modelExtent;
     bool _hasModelBounds;
@@ -123,6 +131,7 @@ double LengthFloat3(const math::float3& value) {
         _resourceLoader = nullptr;
         _asset = nullptr;
         _pendingAsset = nullptr;
+        _animator = nullptr;
         _indirectLight = nullptr;
         _iblTexture = nullptr;
         _skybox = nullptr;
@@ -159,6 +168,12 @@ double LengthFloat3(const math::float3& value) {
         _cameraFovDegrees = 45.0;
         _cameraNear = 0.05;
         _cameraFar = 100.0;
+        _animationIndex = 0;
+        _animationLoop = true;
+        _animationPlaying = false;
+        _animationTimeSeconds = 0.0;
+        _animationSpeed = 1.0;
+        _lastAnimationFrameNanos = 0;
         _modelCenter = math::float3{0.0f, 0.0f, 0.0f};
         _modelExtent = math::float3{0.5f, 0.5f, 0.5f};
         _hasModelBounds = false;
@@ -243,6 +258,11 @@ double LengthFloat3(const math::float3& value) {
     _pendingAsset = nullptr;
     _resourceLoader->evictResourceData();
     [self updateBoundsFromAsset];
+    FilamentInstance* instance = _asset ? _asset->getInstance() : nullptr;
+    _animator = instance ? instance->getAnimator() : nullptr;
+    _animationPlaying = false;
+    _animationTimeSeconds = 0.0;
+    _lastAnimationFrameNanos = 0;
 }
 
 - (void)setIndirectLightFromKTX:(NSData *)data {
@@ -389,6 +409,53 @@ double LengthFloat3(const math::float3& value) {
     _customPerspective[2] = farPlane;
 }
 
+- (int)getAnimationCount {
+    return _animator ? (int)_animator->getAnimationCount() : 0;
+}
+
+- (double)getAnimationDuration:(int)index {
+    if (!_animator || index < 0 || index >= (int)_animator->getAnimationCount()) {
+        return 0.0;
+    }
+    return _animator->getAnimationDuration(index);
+}
+
+- (void)playAnimation:(int)index loop:(BOOL)loop {
+    if (!_animator || _animator->getAnimationCount() == 0) {
+        return;
+    }
+    _animationIndex = std::max(0, std::min(index, (int)_animator->getAnimationCount() - 1));
+    _animationLoop = loop;
+    _animationPlaying = true;
+    _animationTimeSeconds = 0.0;
+    _lastAnimationFrameNanos = 0;
+    _animator->applyAnimation(_animationIndex, 0.0f);
+    _animator->updateBoneMatrices();
+}
+
+- (void)pauseAnimation {
+    _animationPlaying = false;
+    _lastAnimationFrameNanos = 0;
+}
+
+- (void)seekAnimation:(double)seconds {
+    if (!_animator) {
+        return;
+    }
+    double duration = _animator->getAnimationDuration(_animationIndex);
+    if (duration > 0.0) {
+        _animationTimeSeconds = ClampValue(seconds, 0.0, duration);
+    } else {
+        _animationTimeSeconds = std::max(0.0, seconds);
+    }
+    _animator->applyAnimation(_animationIndex, (float)_animationTimeSeconds);
+    _animator->updateBoneMatrices();
+}
+
+- (void)setAnimationSpeed:(double)speed {
+    _animationSpeed = speed;
+}
+
 - (void)clearScene {
     [self clearSceneInternal];
 }
@@ -400,6 +467,7 @@ double LengthFloat3(const math::float3& value) {
     if (_renderer == nullptr || _swapChain == nullptr) {
         return;
     }
+    [self updateAnimation:frameTimeNanos];
     [self updateCamera:frameTimeNanos];
     if (_renderer->beginFrame(_swapChain, frameTimeNanos)) {
         _renderer->render(_view);
@@ -544,6 +612,10 @@ double LengthFloat3(const math::float3& value) {
         _assetLoader->destroyAsset(_pendingAsset);
         _pendingAsset = nullptr;
     }
+    _animator = nullptr;
+    _animationPlaying = false;
+    _animationTimeSeconds = 0.0;
+    _lastAnimationFrameNanos = 0;
 }
 
 - (double)computeDistanceForRadius:(double)radius {
@@ -613,6 +685,39 @@ double LengthFloat3(const math::float3& value) {
     const math::double3 center{_orbitTarget.x, _orbitTarget.y, _orbitTarget.z};
     _camera->lookAt(eye, center, math::double3{0.0, 1.0, 0.0});
     _camera->setProjection(_cameraFovDegrees, aspect, _cameraNear, _cameraFar, Camera::Fov::VERTICAL);
+}
+
+- (void)updateAnimation:(uint64_t)frameTimeNanos {
+    if (!_animator || !_animationPlaying) {
+        return;
+    }
+    if (_lastAnimationFrameNanos == 0) {
+        _lastAnimationFrameNanos = frameTimeNanos;
+        return;
+    }
+    const double deltaSeconds = (frameTimeNanos - _lastAnimationFrameNanos) / 1e9;
+    _lastAnimationFrameNanos = frameTimeNanos;
+    const double duration = _animator->getAnimationDuration(_animationIndex);
+    if (duration <= 0.0) {
+        return;
+    }
+    _animationTimeSeconds += deltaSeconds * _animationSpeed;
+    if (_animationLoop) {
+        _animationTimeSeconds = std::fmod(_animationTimeSeconds, duration);
+        if (_animationTimeSeconds < 0.0) {
+            _animationTimeSeconds += duration;
+        }
+    } else {
+        if (_animationTimeSeconds >= duration) {
+            _animationTimeSeconds = duration;
+            _animationPlaying = false;
+        } else if (_animationTimeSeconds < 0.0) {
+            _animationTimeSeconds = 0.0;
+            _animationPlaying = false;
+        }
+    }
+    _animator->applyAnimation(_animationIndex, (float)_animationTimeSeconds);
+    _animator->updateBoneMatrices();
 }
 
 - (void)updateBoundsFromAsset {

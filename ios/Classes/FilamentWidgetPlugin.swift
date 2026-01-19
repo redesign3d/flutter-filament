@@ -89,6 +89,18 @@ public class FilamentWidgetPlugin: NSObject, FlutterPlugin, FlutterStreamHandler
       handleCustomCameraLookAt(call, result: result)
     case "setCustomPerspective":
       handleCustomPerspective(call, result: result)
+    case "getAnimationCount":
+      handleGetAnimationCount(call, result: result)
+    case "playAnimation":
+      handlePlayAnimation(call, result: result)
+    case "pauseAnimation":
+      handlePauseAnimation(call, result: result)
+    case "seekAnimation":
+      handleSeekAnimation(call, result: result)
+    case "setAnimationSpeed":
+      handleSetAnimationSpeed(call, result: result)
+    case "getAnimationDuration":
+      handleGetAnimationDuration(call, result: result)
     case "orbitStart":
       handleOrbitStart(call, result: result)
     case "orbitDelta":
@@ -357,6 +369,48 @@ public class FilamentWidgetPlugin: NSObject, FlutterPlugin, FlutterStreamHandler
     let near = args["near"] as? Double ?? 0.05
     let far = args["far"] as? Double ?? 100.0
     controller.setCustomPerspective(fovDegrees: fov, near: near, far: far, result: result)
+  }
+
+  private func handleGetAnimationCount(_ call: FlutterMethodCall, result: @escaping FlutterResult) {
+    guard let controller = resolveController(call, result: result) else { return }
+    controller.getAnimationCount(result: result)
+  }
+
+  private func handlePlayAnimation(_ call: FlutterMethodCall, result: @escaping FlutterResult) {
+    guard let controller = resolveController(call, result: result) else { return }
+    guard let args = call.arguments as? [String: Any] else {
+      result(FlutterError(code: "filament_error", message: "Missing animation data.", details: nil))
+      return
+    }
+    let index = args["index"] as? Int ?? 0
+    let loop = args["loop"] as? Bool ?? true
+    controller.playAnimation(index: index, loop: loop, result: result)
+  }
+
+  private func handlePauseAnimation(_ call: FlutterMethodCall, result: @escaping FlutterResult) {
+    guard let controller = resolveController(call, result: result) else { return }
+    controller.pauseAnimation(result: result)
+  }
+
+  private func handleSeekAnimation(_ call: FlutterMethodCall, result: @escaping FlutterResult) {
+    guard let controller = resolveController(call, result: result) else { return }
+    let args = call.arguments as? [String: Any]
+    let seconds = args?["seconds"] as? Double ?? 0.0
+    controller.seekAnimation(seconds: seconds, result: result)
+  }
+
+  private func handleSetAnimationSpeed(_ call: FlutterMethodCall, result: @escaping FlutterResult) {
+    guard let controller = resolveController(call, result: result) else { return }
+    let args = call.arguments as? [String: Any]
+    let speed = args?["speed"] as? Double ?? 1.0
+    controller.setAnimationSpeed(speed: speed, result: result)
+  }
+
+  private func handleGetAnimationDuration(_ call: FlutterMethodCall, result: @escaping FlutterResult) {
+    guard let controller = resolveController(call, result: result) else { return }
+    let args = call.arguments as? [String: Any]
+    let index = args?["index"] as? Int ?? 0
+    controller.getAnimationDuration(index: index, result: result)
   }
 
   private func handleOrbitStart(_ call: FlutterMethodCall, result: @escaping FlutterResult) {

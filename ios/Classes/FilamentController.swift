@@ -408,6 +408,72 @@ final class FilamentController {
     result(nil)
   }
 
+  func getAnimationCount(result: @escaping FlutterResult) {
+    guard let renderer else {
+      result(0)
+      return
+    }
+    renderLoop.perform {
+      let count = renderer.getAnimationCount()
+      DispatchQueue.main.async { result(count) }
+    }
+  }
+
+  func playAnimation(index: Int, loop: Bool, result: @escaping FlutterResult) {
+    guard let renderer else {
+      result(nil)
+      return
+    }
+    renderLoop.perform {
+      renderer.playAnimation(Int32(index), loop: loop)
+      DispatchQueue.main.async { result(nil) }
+    }
+  }
+
+  func pauseAnimation(result: @escaping FlutterResult) {
+    guard let renderer else {
+      result(nil)
+      return
+    }
+    renderLoop.perform {
+      renderer.pauseAnimation()
+      DispatchQueue.main.async { result(nil) }
+    }
+  }
+
+  func seekAnimation(seconds: Double, result: @escaping FlutterResult) {
+    guard let renderer else {
+      result(nil)
+      return
+    }
+    renderLoop.perform {
+      renderer.seekAnimation(seconds)
+      DispatchQueue.main.async { result(nil) }
+    }
+  }
+
+  func setAnimationSpeed(speed: Double, result: @escaping FlutterResult) {
+    guard let renderer else {
+      result(nil)
+      return
+    }
+    renderLoop.perform {
+      renderer.setAnimationSpeed(speed)
+      DispatchQueue.main.async { result(nil) }
+    }
+  }
+
+  func getAnimationDuration(index: Int, result: @escaping FlutterResult) {
+    guard let renderer else {
+      result(0.0)
+      return
+    }
+    renderLoop.perform {
+      let duration = renderer.getAnimationDuration(Int32(index))
+      DispatchQueue.main.async { result(duration) }
+    }
+  }
+
   func getCacheSizeBytes(result: @escaping FlutterResult) {
     DispatchQueue.global(qos: .utility).async { [cacheManager] in
       let size = cacheManager.getCacheSizeBytes()

@@ -81,6 +81,12 @@ class FilamentWidgetPlugin :
             "setCustomCameraEnabled" -> handleCustomCameraEnabled(call, result)
             "setCustomCameraLookAt" -> handleCustomCameraLookAt(call, result)
             "setCustomPerspective" -> handleCustomPerspective(call, result)
+            "getAnimationCount" -> handleGetAnimationCount(call, result)
+            "playAnimation" -> handlePlayAnimation(call, result)
+            "pauseAnimation" -> handlePauseAnimation(call, result)
+            "seekAnimation" -> handleSeekAnimation(call, result)
+            "setAnimationSpeed" -> handleSetAnimationSpeed(call, result)
+            "getAnimationDuration" -> handleGetAnimationDuration(call, result)
             "orbitStart" -> handleOrbitStart(call, result)
             "orbitDelta" -> handleOrbitDelta(call, result)
             "orbitEnd" -> handleOrbitEnd(call, result)
@@ -351,6 +357,41 @@ class FilamentWidgetPlugin :
         val near = call.argument<Double>("near") ?: 0.05
         val far = call.argument<Double>("far") ?: 100.0
         controller.setCustomPerspective(fov, near, far, result)
+    }
+
+    private fun handleGetAnimationCount(call: MethodCall, result: Result) {
+        val controller = resolveController(call, result) ?: return
+        controller.getAnimationCount(result)
+    }
+
+    private fun handlePlayAnimation(call: MethodCall, result: Result) {
+        val controller = resolveController(call, result) ?: return
+        val index = call.argument<Number>("index")?.toInt() ?: 0
+        val loop = call.argument<Boolean>("loop") ?: true
+        controller.playAnimation(index, loop, result)
+    }
+
+    private fun handlePauseAnimation(call: MethodCall, result: Result) {
+        val controller = resolveController(call, result) ?: return
+        controller.pauseAnimation(result)
+    }
+
+    private fun handleSeekAnimation(call: MethodCall, result: Result) {
+        val controller = resolveController(call, result) ?: return
+        val seconds = call.argument<Number>("seconds")?.toDouble() ?: 0.0
+        controller.seekAnimation(seconds, result)
+    }
+
+    private fun handleSetAnimationSpeed(call: MethodCall, result: Result) {
+        val controller = resolveController(call, result) ?: return
+        val speed = call.argument<Number>("speed")?.toDouble() ?: 1.0
+        controller.setAnimationSpeed(speed, result)
+    }
+
+    private fun handleGetAnimationDuration(call: MethodCall, result: Result) {
+        val controller = resolveController(call, result) ?: return
+        val index = call.argument<Number>("index")?.toInt() ?: 0
+        controller.getAnimationDuration(index, result)
     }
 
     private fun handleOrbitStart(call: MethodCall, result: Result) {

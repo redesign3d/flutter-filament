@@ -58,6 +58,18 @@ NS_ASSUME_NONNULL_BEGIN
                                near:(double)nearPlane
                                 far:(double)farPlane;
 
+- (int)getAnimationCount;
+
+- (double)getAnimationDuration:(int)index;
+
+- (void)playAnimation:(int)index loop:(BOOL)loop;
+
+- (void)pauseAnimation;
+
+- (void)seekAnimation:(double)seconds;
+
+- (void)setAnimationSpeed:(double)speed;
+
 - (void)clearScene;
 
 - (void)renderFrame:(uint64_t)frameTimeNanos;

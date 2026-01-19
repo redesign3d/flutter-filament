@@ -14,6 +14,7 @@ import com.google.android.filament.Texture
 import com.google.android.filament.View
 import com.google.android.filament.Viewport
 import com.google.android.filament.gltfio.AssetLoader
+import com.google.android.filament.gltfio.Animator
 import com.google.android.filament.gltfio.FilamentAsset
 import com.google.android.filament.gltfio.MaterialProvider
 import com.google.android.filament.gltfio.ResourceLoader
@@ -39,6 +40,13 @@ class FilamentViewer(
     private var resourceLoader: ResourceLoader? = null
     private var filamentAsset: FilamentAsset? = null
     private var pendingAsset: FilamentAsset? = null
+    private var animator: Animator? = null
+    private var animationIndex = 0
+    private var animationLoop = true
+    private var animationPlaying = false
+    private var animationTimeSeconds = 0.0
+    private var animationSpeed = 1.0
+    private var lastAnimationFrameTimeNanos = 0L
     private var lightEntity: Int = 0
     private var indirectLight: IndirectLight? = null
     private var indirectLightCubemap: Texture? = null
@@ -100,6 +108,7 @@ class FilamentViewer(
             return
         }
         val swap = swapChain ?: return
+        updateAnimation(frameTimeNanos)
         updateCamera(frameTimeNanos)
         if (!renderer.beginFrame(swap, frameTimeNanos)) {
             return
@@ -115,6 +124,10 @@ class FilamentViewer(
         }
         filamentAsset = null
         pendingAsset = null
+        animator = null
+        animationPlaying = false
+        animationTimeSeconds = 0.0
+        lastAnimationFrameTimeNanos = 0L
         resourceLoader?.destroy()
         resourceLoader = null
         hasModelBounds = false
@@ -145,6 +158,10 @@ class FilamentViewer(
         scene.addEntities(asset.entities)
         filamentAsset = asset
         pendingAsset = null
+        animator = asset.instance?.animator
+        animationPlaying = false
+        animationTimeSeconds = 0.0
+        lastAnimationFrameTimeNanos = 0L
         updateBoundsFromAsset(asset)
         eventEmitter("modelLoaded", "Model loaded.")
     }
@@ -231,6 +248,49 @@ class FilamentViewer(
     }
 
     fun zoomEnd() {}
+
+    fun getAnimationCount(): Int = animator?.animationCount ?: 0
+
+    fun getAnimationDuration(index: Int): Double {
+        val current = animator ?: return 0.0
+        if (index < 0 || index >= current.animationCount) {
+            return 0.0
+        }
+        return current.getAnimationDuration(index).toDouble()
+    }
+
+    fun playAnimation(index: Int, loop: Boolean) {
+        val current = animator ?: return
+        if (current.animationCount == 0) {
+            return
+        }
+        animationIndex = index.coerceIn(0, current.animationCount - 1)
+        animationLoop = loop
+        animationPlaying = true
+        animationTimeSeconds = 0.0
+        lastAnimationFrameTimeNanos = 0L
+        applyAnimationFrame(current, animationTimeSeconds)
+    }
+
+    fun pauseAnimation() {
+        animationPlaying = false
+        lastAnimationFrameTimeNanos = 0L
+    }
+
+    fun seekAnimation(seconds: Double) {
+        val current = animator ?: return
+        val duration = current.getAnimationDuration(animationIndex).toDouble()
+        animationTimeSeconds = if (duration > 0.0) {
+            seconds.coerceIn(0.0, duration)
+        } else {
+            seconds.coerceAtLeast(0.0)
+        }
+        applyAnimationFrame(current, animationTimeSeconds)
+    }
+
+    fun setAnimationSpeed(speed: Double) {
+        animationSpeed = speed
+    }
 
     fun setCustomCameraEnabled(enabled: Boolean) {
         customCameraEnabled = enabled
@@ -346,6 +406,41 @@ class FilamentViewer(
             0.0,
         )
         updateProjection()
+    }
+
+    private fun updateAnimation(frameTimeNanos: Long) {
+        val current = animator ?: return
+        if (!animationPlaying) {
+            return
+        }
+        if (lastAnimationFrameTimeNanos == 0L) {
+            lastAnimationFrameTimeNanos = frameTimeNanos
+            return
+        }
+        val deltaSeconds = (frameTimeNanos - lastAnimationFrameTimeNanos) / 1_000_000_000.0
+        lastAnimationFrameTimeNanos = frameTimeNanos
+        val duration = current.getAnimationDuration(animationIndex).toDouble()
+        if (duration <= 0.0) {
+            return
+        }
+        animationTimeSeconds += deltaSeconds * animationSpeed
+        if (animationLoop) {
+            animationTimeSeconds = ((animationTimeSeconds % duration) + duration) % duration
+        } else {
+            if (animationTimeSeconds >= duration) {
+                animationTimeSeconds = duration
+                animationPlaying = false
+            } else if (animationTimeSeconds < 0.0) {
+                animationTimeSeconds = 0.0
+                animationPlaying = false
+            }
+        }
+        applyAnimationFrame(current, animationTimeSeconds)
+    }
+
+    private fun applyAnimationFrame(animator: Animator, timeSeconds: Double) {
+        animator.applyAnimation(animationIndex, timeSeconds.toFloat())
+        animator.updateBoneMatrices()
     }
 
     private fun updateBoundsFromAsset(asset: FilamentAsset) {

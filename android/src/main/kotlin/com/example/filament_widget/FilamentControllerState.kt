@@ -294,6 +294,78 @@ class FilamentControllerState(
         }
     }
 
+    fun getAnimationCount(result: Result) {
+        val current = viewer
+        if (current == null) {
+            result.success(0)
+            return
+        }
+        renderThread.post {
+            val count = current.getAnimationCount()
+            mainHandler.post { result.success(count) }
+        }
+    }
+
+    fun playAnimation(index: Int, loop: Boolean, result: Result) {
+        val current = viewer
+        if (current == null) {
+            result.success(null)
+            return
+        }
+        renderThread.post {
+            current.playAnimation(index, loop)
+            postSuccess(result)
+        }
+    }
+
+    fun pauseAnimation(result: Result) {
+        val current = viewer
+        if (current == null) {
+            result.success(null)
+            return
+        }
+        renderThread.post {
+            current.pauseAnimation()
+            postSuccess(result)
+        }
+    }
+
+    fun seekAnimation(seconds: Double, result: Result) {
+        val current = viewer
+        if (current == null) {
+            result.success(null)
+            return
+        }
+        renderThread.post {
+            current.seekAnimation(seconds)
+            postSuccess(result)
+        }
+    }
+
+    fun setAnimationSpeed(speed: Double, result: Result) {
+        val current = viewer
+        if (current == null) {
+            result.success(null)
+            return
+        }
+        renderThread.post {
+            current.setAnimationSpeed(speed)
+            postSuccess(result)
+        }
+    }
+
+    fun getAnimationDuration(index: Int, result: Result) {
+        val current = viewer
+        if (current == null) {
+            result.success(0.0)
+            return
+        }
+        renderThread.post {
+            val duration = current.getAnimationDuration(index)
+            mainHandler.post { result.success(duration) }
+        }
+    }
+
     fun orbitStart(result: Result) {
         val current = viewer
         if (current == null) {
