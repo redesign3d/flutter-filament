@@ -10,14 +10,20 @@
 #include <filament/Camera.h>
 #include <filament/Box.h>
 #include <filament/ColorGrading.h>
+#include <filament/Color.h>
 #include <filament/Engine.h>
 #include <filament/LightManager.h>
 #include <filament/IndirectLight.h>
+#include <filament/IndexBuffer.h>
+#include <filament/Material.h>
+#include <filament/MaterialInstance.h>
+#include <filament/RenderableManager.h>
 #include <filament/Renderer.h>
 #include <filament/Scene.h>
 #include <filament/Skybox.h>
 #include <filament/SwapChain.h>
 #include <filament/Texture.h>
+#include <filament/VertexBuffer.h>
 #include <filament/View.h>
 #include <filament/Viewport.h>
 #include <gltfio/Animator.h>
@@ -105,6 +111,19 @@ double LengthFloat3(const math::float3& value) {
     ColorGrading* _colorGrading;
     int _msaaSamples;
     bool _dynamicResolutionEnabled;
+    Material* _debugLineMaterial;
+    MaterialInstance* _wireframeMaterialInstance;
+    MaterialInstance* _boundsMaterialInstance;
+    VertexBuffer* _boundsVertexBuffer;
+    IndexBuffer* _boundsIndexBuffer;
+    Entity _wireframeEntity;
+    Entity _boundsEntity;
+    bool _wireframeEnabled;
+    bool _boundingBoxesEnabled;
+    bool _debugLoggingEnabled;
+    FilamentFpsCallback _fpsCallback;
+    uint64_t _fpsStartTimeNanos;
+    int _fpsFrameCount;
     int _animationIndex;
     bool _animationLoop;
     bool _animationPlaying;
@@ -175,6 +194,19 @@ double LengthFloat3(const math::float3& value) {
         _colorGrading = nullptr;
         _msaaSamples = 2;
         _dynamicResolutionEnabled = true;
+        _debugLineMaterial = nullptr;
+        _wireframeMaterialInstance = nullptr;
+        _boundsMaterialInstance = nullptr;
+        _boundsVertexBuffer = nullptr;
+        _boundsIndexBuffer = nullptr;
+        _wireframeEntity = {};
+        _boundsEntity = {};
+        _wireframeEnabled = false;
+        _boundingBoxesEnabled = false;
+        _debugLoggingEnabled = false;
+        _fpsCallback = nil;
+        _fpsStartTimeNanos = 0;
+        _fpsFrameCount = 0;
         _animationIndex = 0;
         _animationLoop = true;
         _animationPlaying = false;
@@ -274,6 +306,8 @@ double LengthFloat3(const math::float3& value) {
     _animationPlaying = false;
     _animationTimeSeconds = 0.0;
     _lastAnimationFrameNanos = 0;
+    [self updateWireframe];
+    [self rebuildBoundsRenderable];
 }
 
 - (void)setIndirectLightFromKTX:(NSData *)data {
@@ -464,6 +498,25 @@ double LengthFloat3(const math::float3& value) {
     }
 }
 
+- (void)setWireframeEnabled:(BOOL)enabled {
+    _wireframeEnabled = enabled;
+    [self updateWireframe];
+}
+
+- (void)setBoundingBoxesEnabled:(BOOL)enabled {
+    _boundingBoxesEnabled = enabled;
+    [self rebuildBoundsRenderable];
+}
+
+- (void)setDebugLoggingEnabled:(BOOL)enabled {
+    _debugLoggingEnabled = enabled;
+    [self logDebug:[NSString stringWithFormat:@"Debug logging %@.", enabled ? @"enabled" : @"disabled"]];
+}
+
+- (void)setFpsCallback:(FilamentFpsCallback)callback {
+    _fpsCallback = [callback copy];
+}
+
 - (int)getAnimationCount {
     return _animator ? (int)_animator->getAnimationCount() : 0;
 }
@@ -527,6 +580,7 @@ double LengthFloat3(const math::float3& value) {
     if (_renderer->beginFrame(_swapChain, frameTimeNanos)) {
         _renderer->render(_view);
         _renderer->endFrame();
+        [self updateFps:frameTimeNanos];
     }
 }
 
@@ -572,6 +626,18 @@ double LengthFloat3(const math::float3& value) {
     if (_colorGrading) {
         _engine->destroy(_colorGrading);
         _colorGrading = nullptr;
+    }
+    if (_wireframeMaterialInstance) {
+        _engine->destroy(_wireframeMaterialInstance);
+        _wireframeMaterialInstance = nullptr;
+    }
+    if (_boundsMaterialInstance) {
+        _engine->destroy(_boundsMaterialInstance);
+        _boundsMaterialInstance = nullptr;
+    }
+    if (_debugLineMaterial) {
+        _engine->destroy(_debugLineMaterial);
+        _debugLineMaterial = nullptr;
     }
     if (_swapChain) {
         _engine->destroy(_swapChain);
@@ -671,6 +737,11 @@ double LengthFloat3(const math::float3& value) {
         _assetLoader->destroyAsset(_pendingAsset);
         _pendingAsset = nullptr;
     }
+    if (_scene && _wireframeEntity) {
+        _scene->remove(_wireframeEntity);
+        _wireframeEntity.clear();
+    }
+    [self destroyBoundsRenderable];
     _animator = nullptr;
     _animationPlaying = false;
     _animationTimeSeconds = 0.0;
@@ -777,6 +848,175 @@ double LengthFloat3(const math::float3& value) {
     }
     _animator->applyAnimation(_animationIndex, (float)_animationTimeSeconds);
     _animator->updateBoneMatrices();
+}
+
+- (Material*)ensureDebugLineMaterial {
+    if (_debugLineMaterial) {
+        return _debugLineMaterial;
+    }
+    NSBundle* bundle = [NSBundle bundleForClass:[FilamentRenderer class]];
+    NSURL* url = [bundle URLForResource:@"wireframe" withExtension:@"filamat"];
+    if (!url) {
+        [self logDebug:@"wireframe.filamat not found in bundle."];
+        return nullptr;
+    }
+    NSData* data = [NSData dataWithContentsOfURL:url];
+    if (!data) {
+        [self logDebug:@"Failed to load wireframe.filamat data."];
+        return nullptr;
+    }
+    _debugLineMaterial = Material::Builder()
+        .package(data.bytes, data.length)
+        .build(*_engine);
+    return _debugLineMaterial;
+}
+
+- (void)updateWireframe {
+    if (!_scene) {
+        return;
+    }
+    if (!_wireframeEnabled || !_asset) {
+        if (_wireframeEntity) {
+            _scene->remove(_wireframeEntity);
+            _wireframeEntity.clear();
+        }
+        return;
+    }
+    Material* material = [self ensureDebugLineMaterial];
+    if (!material) {
+        return;
+    }
+    if (!_wireframeMaterialInstance) {
+        _wireframeMaterialInstance = material->createInstance();
+        _wireframeMaterialInstance->setParameter(
+            "color",
+            RgbaType::LINEAR,
+            LinearColorA{0.0f, 0.85f, 1.0f, 0.6f}
+        );
+    }
+    _wireframeEntity = _asset->getWireframe();
+    RenderableManager& rm = _engine->getRenderableManager();
+    auto instance = rm.getInstance(_wireframeEntity);
+    if (instance) {
+        rm.setMaterialInstanceAt(instance, 0, _wireframeMaterialInstance);
+    }
+    _scene->addEntity(_wireframeEntity);
+    [self logDebug:@"Wireframe enabled."];
+}
+
+- (void)rebuildBoundsRenderable {
+    [self destroyBoundsRenderable];
+    if (!_scene || !_boundingBoxesEnabled || !_hasModelBounds) {
+        return;
+    }
+    Material* material = [self ensureDebugLineMaterial];
+    if (!material) {
+        return;
+    }
+    if (!_boundsMaterialInstance) {
+        _boundsMaterialInstance = material->createInstance();
+        _boundsMaterialInstance->setParameter(
+            "color",
+            RgbaType::LINEAR,
+            LinearColorA{1.0f, 0.3f, 0.3f, 0.8f}
+        );
+    }
+    const float minX = _modelCenter.x - _modelExtent.x;
+    const float minY = _modelCenter.y - _modelExtent.y;
+    const float minZ = _modelCenter.z - _modelExtent.z;
+    const float maxX = _modelCenter.x + _modelExtent.x;
+    const float maxY = _modelCenter.y + _modelExtent.y;
+    const float maxZ = _modelCenter.z + _modelExtent.z;
+
+    auto* vertices = (math::float3*) malloc(sizeof(math::float3) * 8);
+    auto* indices = (uint32_t*) malloc(sizeof(uint32_t) * 24);
+    vertices[0] = { minX, minY, minZ };
+    vertices[1] = { minX, minY, maxZ };
+    vertices[2] = { minX, maxY, minZ };
+    vertices[3] = { minX, maxY, maxZ };
+    vertices[4] = { maxX, minY, minZ };
+    vertices[5] = { maxX, minY, maxZ };
+    vertices[6] = { maxX, maxY, minZ };
+    vertices[7] = { maxX, maxY, maxZ };
+
+    const uint32_t edgeIndices[24] = {
+        0, 1, 1, 3, 3, 2, 2, 0,
+        4, 5, 5, 7, 7, 6, 6, 4,
+        0, 4, 2, 6, 1, 5, 3, 7,
+    };
+    memcpy(indices, edgeIndices, sizeof(edgeIndices));
+
+    _boundsVertexBuffer = VertexBuffer::Builder()
+        .bufferCount(1)
+        .vertexCount(8)
+        .attribute(VertexAttribute::POSITION, 0, VertexBuffer::AttributeType::FLOAT3)
+        .build(*_engine);
+    _boundsIndexBuffer = IndexBuffer::Builder()
+        .indexCount(24)
+        .bufferType(IndexBuffer::IndexType::UINT)
+        .build(*_engine);
+    _boundsVertexBuffer->setBufferAt(
+        *_engine,
+        0,
+        VertexBuffer::BufferDescriptor(vertices, sizeof(math::float3) * 8, ReleaseBuffer)
+    );
+    _boundsIndexBuffer->setBuffer(
+        *_engine,
+        IndexBuffer::BufferDescriptor(indices, sizeof(uint32_t) * 24, ReleaseBuffer)
+    );
+
+    _boundsEntity = EntityManager::get().create();
+    RenderableManager::Builder(1)
+        .culling(false)
+        .castShadows(false)
+        .receiveShadows(false)
+        .material(0, _boundsMaterialInstance)
+        .geometry(0, RenderableManager::PrimitiveType::LINES, _boundsVertexBuffer, _boundsIndexBuffer)
+        .build(*_engine, _boundsEntity);
+    _scene->addEntity(_boundsEntity);
+    [self logDebug:@"Bounding box enabled."];
+}
+
+- (void)destroyBoundsRenderable {
+    if (_boundsEntity) {
+        if (_scene) {
+            _scene->remove(_boundsEntity);
+        }
+        _engine->destroy(_boundsEntity);
+        _boundsEntity.clear();
+    }
+    if (_boundsVertexBuffer) {
+        _engine->destroy(_boundsVertexBuffer);
+        _boundsVertexBuffer = nullptr;
+    }
+    if (_boundsIndexBuffer) {
+        _engine->destroy(_boundsIndexBuffer);
+        _boundsIndexBuffer = nullptr;
+    }
+}
+
+- (void)updateFps:(uint64_t)frameTimeNanos {
+    if (!_fpsCallback) {
+        return;
+    }
+    if (_fpsStartTimeNanos == 0) {
+        _fpsStartTimeNanos = frameTimeNanos;
+        _fpsFrameCount = 0;
+    }
+    _fpsFrameCount += 1;
+    const uint64_t elapsed = frameTimeNanos - _fpsStartTimeNanos;
+    if (elapsed >= 1'000'000'000) {
+        const double fpsValue = _fpsFrameCount * 1e9 / (double)elapsed;
+        _fpsCallback(fpsValue);
+        _fpsStartTimeNanos = frameTimeNanos;
+        _fpsFrameCount = 0;
+    }
+}
+
+- (void)logDebug:(NSString*)message {
+    if (_debugLoggingEnabled) {
+        NSLog(@"[FilamentWidget] %@", message);
+    }
 }
 
 - (void)updateBoundsFromAsset {

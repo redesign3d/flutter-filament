@@ -31,7 +31,7 @@ class FilamentControllerState(
         val entry = textureRegistry.createSurfaceTexture()
         entry.surfaceTexture().setDefaultBufferSize(width, height)
         val surface = Surface(entry.surfaceTexture())
-        val newViewer = FilamentViewer(entry, surface, eventEmitter)
+        val newViewer = FilamentViewer(entry, surface, context.assets, eventEmitter)
         viewer = newViewer
         renderThread.addViewer(newViewer)
         renderThread.post { newViewer.resize(width, height) }
@@ -410,6 +410,42 @@ class FilamentControllerState(
         }
         renderThread.post {
             current.setShadowsEnabled(enabled)
+            postSuccess(result)
+        }
+    }
+
+    fun setWireframeEnabled(enabled: Boolean, result: Result) {
+        val current = viewer
+        if (current == null) {
+            result.success(null)
+            return
+        }
+        renderThread.post {
+            current.setWireframeEnabled(enabled)
+            postSuccess(result)
+        }
+    }
+
+    fun setBoundingBoxesEnabled(enabled: Boolean, result: Result) {
+        val current = viewer
+        if (current == null) {
+            result.success(null)
+            return
+        }
+        renderThread.post {
+            current.setBoundingBoxesEnabled(enabled)
+            postSuccess(result)
+        }
+    }
+
+    fun setDebugLoggingEnabled(enabled: Boolean, result: Result) {
+        val current = viewer
+        if (current == null) {
+            result.success(null)
+            return
+        }
+        renderThread.post {
+            current.setDebugLoggingEnabled(enabled)
             postSuccess(result)
         }
     }

@@ -109,6 +109,12 @@ public class FilamentWidgetPlugin: NSObject, FlutterPlugin, FlutterStreamHandler
       handleSetToneMappingFilmic(call, result: result)
     case "setShadowsEnabled":
       handleSetShadowsEnabled(call, result: result)
+    case "setWireframeEnabled":
+      handleSetWireframeEnabled(call, result: result)
+    case "setBoundingBoxesEnabled":
+      handleSetBoundingBoxesEnabled(call, result: result)
+    case "setDebugLoggingEnabled":
+      handleSetDebugLoggingEnabled(call, result: result)
     case "orbitStart":
       handleOrbitStart(call, result: result)
     case "orbitDelta":
@@ -445,6 +451,27 @@ public class FilamentWidgetPlugin: NSObject, FlutterPlugin, FlutterStreamHandler
     let args = call.arguments as? [String: Any]
     let enabled = args?["enabled"] as? Bool ?? true
     controller.setShadowsEnabled(enabled, result: result)
+  }
+
+  private func handleSetWireframeEnabled(_ call: FlutterMethodCall, result: @escaping FlutterResult) {
+    guard let controller = resolveController(call, result: result) else { return }
+    let args = call.arguments as? [String: Any]
+    let enabled = args?["enabled"] as? Bool ?? false
+    controller.setWireframeEnabled(enabled, result: result)
+  }
+
+  private func handleSetBoundingBoxesEnabled(_ call: FlutterMethodCall, result: @escaping FlutterResult) {
+    guard let controller = resolveController(call, result: result) else { return }
+    let args = call.arguments as? [String: Any]
+    let enabled = args?["enabled"] as? Bool ?? false
+    controller.setBoundingBoxesEnabled(enabled, result: result)
+  }
+
+  private func handleSetDebugLoggingEnabled(_ call: FlutterMethodCall, result: @escaping FlutterResult) {
+    guard let controller = resolveController(call, result: result) else { return }
+    let args = call.arguments as? [String: Any]
+    let enabled = args?["enabled"] as? Bool ?? false
+    controller.setDebugLoggingEnabled(enabled, result: result)
   }
 
   private func handleOrbitStart(_ call: FlutterMethodCall, result: @escaping FlutterResult) {

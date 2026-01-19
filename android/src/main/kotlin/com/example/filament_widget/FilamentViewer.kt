@@ -1,5 +1,6 @@
 package com.example.filament_widget
 
+import android.content.res.AssetManager
 import android.view.Surface
 import com.google.android.filament.Camera
 import com.google.android.filament.ColorGrading
@@ -7,11 +8,15 @@ import com.google.android.filament.EntityManager
 import com.google.android.filament.Engine
 import com.google.android.filament.IndirectLight
 import com.google.android.filament.LightManager
+import com.google.android.filament.Material
+import com.google.android.filament.MaterialInstance
+import com.google.android.filament.RenderableManager
 import com.google.android.filament.Renderer
 import com.google.android.filament.Scene
 import com.google.android.filament.Skybox
 import com.google.android.filament.SwapChain
 import com.google.android.filament.Texture
+import com.google.android.filament.VertexBuffer
 import com.google.android.filament.View
 import com.google.android.filament.Viewport
 import com.google.android.filament.gltfio.AssetLoader
@@ -23,12 +28,33 @@ import com.google.android.filament.gltfio.UbershaderProvider
 import com.google.android.filament.utils.KTX1Loader
 import io.flutter.view.TextureRegistry
 import java.nio.ByteBuffer
+import java.nio.ByteOrder
+import java.nio.FloatBuffer
+import java.nio.IntBuffer
+import java.util.Locale
+import android.util.Log
+import com.google.android.filament.Box
+import com.google.android.filament.IndexBuffer
+import com.google.android.filament.Colors
 
 class FilamentViewer(
     private val textureEntry: TextureRegistry.SurfaceTextureEntry,
     private val surface: Surface,
+    private val assetManager: AssetManager,
     private val eventEmitter: (String, String) -> Unit,
 ) {
+    private data class DebugLineRenderable(
+        val entity: Int,
+        val vertexBuffer: VertexBuffer,
+        val indexBuffer: IndexBuffer,
+        val materialInstance: MaterialInstance,
+    )
+
+    private data class LineMeshData(
+        val positions: FloatArray,
+        val indices: IntArray,
+    )
+
     private val engine: Engine = FilamentEngineManager.getEngine()
     private val renderer: Renderer = engine.createRenderer()
     private val view: View = engine.createView()
@@ -48,6 +74,14 @@ class FilamentViewer(
     private var animationTimeSeconds = 0.0
     private var animationSpeed = 1.0
     private var lastAnimationFrameTimeNanos = 0L
+    private var debugLineMaterial: Material? = null
+    private var wireframeRenderable: DebugLineRenderable? = null
+    private var boundsRenderable: DebugLineRenderable? = null
+    private var wireframeEnabled = false
+    private var boundingBoxesEnabled = false
+    private var debugLoggingEnabled = false
+    private var fpsFrameCount = 0
+    private var fpsStartTimeNanos = 0L
     private var lightEntity: Int = 0
     private var indirectLight: IndirectLight? = null
     private var indirectLightCubemap: Texture? = null
@@ -129,6 +163,7 @@ class FilamentViewer(
         }
         renderer.render(view)
         renderer.endFrame()
+        updateFps(frameTimeNanos)
     }
 
     fun clearScene() {
@@ -142,6 +177,10 @@ class FilamentViewer(
         animationPlaying = false
         animationTimeSeconds = 0.0
         lastAnimationFrameTimeNanos = 0L
+        destroyDebugRenderable(wireframeRenderable)
+        destroyDebugRenderable(boundsRenderable)
+        wireframeRenderable = null
+        boundsRenderable = null
         resourceLoader?.destroy()
         resourceLoader = null
         hasModelBounds = false
@@ -177,6 +216,8 @@ class FilamentViewer(
         animationTimeSeconds = 0.0
         lastAnimationFrameTimeNanos = 0L
         updateBoundsFromAsset(asset)
+        rebuildWireframe()
+        rebuildBoundingBoxes()
         eventEmitter("modelLoaded", "Model loaded.")
     }
 
@@ -189,11 +230,17 @@ class FilamentViewer(
         skybox?.let { engine.destroySkybox(it) }
         skyboxCubemap?.let { engine.destroyTexture(it) }
         colorGrading?.let { engine.destroyColorGrading(it) }
+        destroyDebugRenderable(wireframeRenderable)
+        destroyDebugRenderable(boundsRenderable)
+        debugLineMaterial?.let { engine.destroyMaterial(it) }
         indirectLight = null
         indirectLightCubemap = null
         skybox = null
         skyboxCubemap = null
         colorGrading = null
+        debugLineMaterial = null
+        wireframeRenderable = null
+        boundsRenderable = null
         swapChain?.let { engine.destroySwapChain(it) }
         swapChain = null
         engine.destroyRenderer(renderer)
@@ -335,6 +382,21 @@ class FilamentViewer(
         view.setShadowingEnabled(enabled)
     }
 
+    fun setWireframeEnabled(enabled: Boolean) {
+        wireframeEnabled = enabled
+        rebuildWireframe()
+    }
+
+    fun setBoundingBoxesEnabled(enabled: Boolean) {
+        boundingBoxesEnabled = enabled
+        rebuildBoundingBoxes()
+    }
+
+    fun setDebugLoggingEnabled(enabled: Boolean) {
+        debugLoggingEnabled = enabled
+        logDebug("Debug logging ${if (enabled) "enabled" else "disabled"}.")
+    }
+
     fun setCustomCameraEnabled(enabled: Boolean) {
         customCameraEnabled = enabled
     }
@@ -454,6 +516,301 @@ class FilamentViewer(
     private fun applyDynamicResolution() {
         dynamicResolutionOptions.enabled = dynamicResolutionEnabled
         view.setDynamicResolutionOptions(dynamicResolutionOptions)
+    }
+
+    private fun rebuildWireframe() {
+        destroyDebugRenderable(wireframeRenderable)
+        wireframeRenderable = null
+        if (!wireframeEnabled) {
+            return
+        }
+        val data = buildWireframeLineData() ?: return
+        wireframeRenderable = buildDebugRenderable(
+            data,
+            floatArrayOf(0.0f, 0.85f, 1.0f, 0.6f),
+        )
+        wireframeRenderable?.let { scene.addEntity(it.entity) }
+        logDebug("Wireframe renderable updated.")
+    }
+
+    private fun rebuildBoundingBoxes() {
+        destroyDebugRenderable(boundsRenderable)
+        boundsRenderable = null
+        if (!boundingBoxesEnabled) {
+            return
+        }
+        val data = buildBoundingBoxLineData() ?: return
+        boundsRenderable = buildDebugRenderable(
+            data,
+            floatArrayOf(1.0f, 0.3f, 0.3f, 0.8f),
+        )
+        boundsRenderable?.let { scene.addEntity(it.entity) }
+        logDebug("Bounding box renderable updated.")
+    }
+
+    private fun buildWireframeLineData(): LineMeshData? {
+        val asset = filamentAsset ?: return null
+        val renderables = asset.renderableEntities
+        if (renderables.isEmpty()) {
+            return null
+        }
+        val tm = engine.transformManager
+        val rm = engine.renderableManager
+        val valid = mutableListOf<Int>()
+        for (entity in renderables) {
+            if (!tm.hasComponent(entity)) {
+                continue
+            }
+            val instance = rm.getInstance(entity)
+            if (instance != 0) {
+                valid.add(entity)
+            }
+        }
+        if (valid.isEmpty()) {
+            return null
+        }
+        val positions = FloatArray(valid.size * 8 * 3)
+        val indices = IntArray(valid.size * 24)
+        val edgeIndices = intArrayOf(
+            0,
+            1,
+            1,
+            3,
+            3,
+            2,
+            2,
+            0,
+            4,
+            5,
+            5,
+            7,
+            7,
+            6,
+            6,
+            4,
+            0,
+            4,
+            2,
+            6,
+            1,
+            5,
+            3,
+            7,
+        )
+        val world = FloatArray(16)
+        var vIndex = 0
+        var iIndex = 0
+        for (entity in valid) {
+            val renderable = rm.getInstance(entity)
+            val transform = tm.getInstance(entity)
+            tm.getWorldTransform(transform, world)
+            val box = Box()
+            rm.getAxisAlignedBoundingBox(renderable, box)
+            val center = box.center
+            val half = box.halfExtent
+            val minX = center[0] - half[0]
+            val minY = center[1] - half[1]
+            val minZ = center[2] - half[2]
+            val maxX = center[0] + half[0]
+            val maxY = center[1] + half[1]
+            val maxZ = center[2] + half[2]
+            val corners = arrayOf(
+                floatArrayOf(minX, minY, minZ),
+                floatArrayOf(minX, minY, maxZ),
+                floatArrayOf(minX, maxY, minZ),
+                floatArrayOf(minX, maxY, maxZ),
+                floatArrayOf(maxX, minY, minZ),
+                floatArrayOf(maxX, minY, maxZ),
+                floatArrayOf(maxX, maxY, minZ),
+                floatArrayOf(maxX, maxY, maxZ),
+            )
+            val baseVertex = vIndex / 3
+            for (corner in corners) {
+                val transformed = transformPoint(world, corner[0], corner[1], corner[2])
+                positions[vIndex++] = transformed[0]
+                positions[vIndex++] = transformed[1]
+                positions[vIndex++] = transformed[2]
+            }
+            for (edge in edgeIndices) {
+                indices[iIndex++] = baseVertex + edge
+            }
+        }
+        return LineMeshData(positions, indices)
+    }
+
+    private fun buildBoundingBoxLineData(): LineMeshData? {
+        if (!hasModelBounds) {
+            return null
+        }
+        val center = modelCenter
+        val half = modelHalfExtent
+        val minX = (center[0] - half[0]).toFloat()
+        val minY = (center[1] - half[1]).toFloat()
+        val minZ = (center[2] - half[2]).toFloat()
+        val maxX = (center[0] + half[0]).toFloat()
+        val maxY = (center[1] + half[1]).toFloat()
+        val maxZ = (center[2] + half[2]).toFloat()
+        val positions = floatArrayOf(
+            minX,
+            minY,
+            minZ,
+            minX,
+            minY,
+            maxZ,
+            minX,
+            maxY,
+            minZ,
+            minX,
+            maxY,
+            maxZ,
+            maxX,
+            minY,
+            minZ,
+            maxX,
+            minY,
+            maxZ,
+            maxX,
+            maxY,
+            minZ,
+            maxX,
+            maxY,
+            maxZ,
+        )
+        val indices = intArrayOf(
+            0,
+            1,
+            1,
+            3,
+            3,
+            2,
+            2,
+            0,
+            4,
+            5,
+            5,
+            7,
+            7,
+            6,
+            6,
+            4,
+            0,
+            4,
+            2,
+            6,
+            1,
+            5,
+            3,
+            7,
+        )
+        return LineMeshData(positions, indices)
+    }
+
+    private fun buildDebugRenderable(
+        data: LineMeshData,
+        color: FloatArray,
+    ): DebugLineRenderable? {
+        val material = ensureDebugMaterial() ?: return null
+        val vertexBuffer = VertexBuffer.Builder()
+            .bufferCount(1)
+            .vertexCount(data.positions.size / 3)
+            .attribute(VertexBuffer.VertexAttribute.POSITION, 0, VertexBuffer.AttributeType.FLOAT3)
+            .build(engine)
+        val indexBuffer = IndexBuffer.Builder()
+            .indexCount(data.indices.size)
+            .bufferType(IndexBuffer.Builder.IndexType.UINT)
+            .build(engine)
+        val vertexData = ByteBuffer.allocateDirect(data.positions.size * 4)
+            .order(ByteOrder.nativeOrder())
+            .asFloatBuffer()
+        vertexData.put(data.positions)
+        vertexData.flip()
+        val indexData = ByteBuffer.allocateDirect(data.indices.size * 4)
+            .order(ByteOrder.nativeOrder())
+            .asIntBuffer()
+        indexData.put(data.indices)
+        indexData.flip()
+        vertexBuffer.setBufferAt(engine, 0, vertexData)
+        indexBuffer.setBuffer(engine, indexData)
+        val instance = material.createInstance()
+        instance.setParameter(
+            "color",
+            Colors.RgbaType.LINEAR,
+            color[0],
+            color[1],
+            color[2],
+            color[3],
+        )
+        val entity = EntityManager.get().create()
+        RenderableManager.Builder(1)
+            .culling(false)
+            .castShadows(false)
+            .receiveShadows(false)
+            .material(0, instance)
+            .geometry(0, RenderableManager.PrimitiveType.LINES, vertexBuffer, indexBuffer)
+            .build(engine, entity)
+        return DebugLineRenderable(entity, vertexBuffer, indexBuffer, instance)
+    }
+
+    private fun destroyDebugRenderable(renderable: DebugLineRenderable?) {
+        if (renderable == null) {
+            return
+        }
+        scene.removeEntity(renderable.entity)
+        engine.destroyVertexBuffer(renderable.vertexBuffer)
+        engine.destroyIndexBuffer(renderable.indexBuffer)
+        engine.destroyMaterialInstance(renderable.materialInstance)
+        engine.destroyEntity(renderable.entity)
+    }
+
+    private fun ensureDebugMaterial(): Material? {
+        if (debugLineMaterial != null) {
+            return debugLineMaterial
+        }
+        return try {
+            assetManager.open("filament/wireframe.filamat").use { input ->
+                val bytes = input.readBytes()
+                val buffer = ByteBuffer.allocateDirect(bytes.size)
+                buffer.order(ByteOrder.nativeOrder())
+                buffer.put(bytes)
+                buffer.flip()
+                val material = Material.Builder()
+                    .payload(buffer, buffer.remaining())
+                    .build(engine)
+                debugLineMaterial = material
+                material
+            }
+        } catch (e: Exception) {
+            logDebug("Failed to load wireframe material: ${e.message}")
+            null
+        }
+    }
+
+    private fun transformPoint(matrix: FloatArray, x: Float, y: Float, z: Float): FloatArray {
+        val tx = matrix[0] * x + matrix[4] * y + matrix[8] * z + matrix[12]
+        val ty = matrix[1] * x + matrix[5] * y + matrix[9] * z + matrix[13]
+        val tz = matrix[2] * x + matrix[6] * y + matrix[10] * z + matrix[14]
+        return floatArrayOf(tx, ty, tz)
+    }
+
+    private fun updateFps(frameTimeNanos: Long) {
+        if (fpsStartTimeNanos == 0L) {
+            fpsStartTimeNanos = frameTimeNanos
+            fpsFrameCount = 0
+        }
+        fpsFrameCount += 1
+        val elapsed = frameTimeNanos - fpsStartTimeNanos
+        if (elapsed >= 1_000_000_000L) {
+            val fpsValue = fpsFrameCount * 1_000_000_000.0 / elapsed.toDouble()
+            eventEmitter("fps", String.format(Locale.US, "%.2f", fpsValue))
+            fpsStartTimeNanos = frameTimeNanos
+            fpsFrameCount = 0
+        }
+    }
+
+    private fun logDebug(message: String) {
+        if (debugLoggingEnabled) {
+            Log.d("FilamentWidget", message)
+        }
     }
 
     private fun updateAnimation(frameTimeNanos: Long) {

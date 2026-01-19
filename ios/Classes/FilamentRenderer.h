@@ -3,6 +3,8 @@
 
 NS_ASSUME_NONNULL_BEGIN
 
+typedef void (^FilamentFpsCallback)(double fps);
+
 @interface FilamentRenderer : NSObject
 
 - (void)setupWithPixelBuffer:(CVPixelBufferRef)pixelBuffer
@@ -65,6 +67,14 @@ NS_ASSUME_NONNULL_BEGIN
 - (void)setToneMappingFilmic;
 
 - (void)setShadowsEnabled:(BOOL)enabled;
+
+- (void)setWireframeEnabled:(BOOL)enabled;
+
+- (void)setBoundingBoxesEnabled:(BOOL)enabled;
+
+- (void)setDebugLoggingEnabled:(BOOL)enabled;
+
+- (void)setFpsCallback:(nullable FilamentFpsCallback)callback;
 
 - (int)getAnimationCount;
 

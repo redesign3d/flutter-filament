@@ -91,6 +91,9 @@ class FilamentWidgetPlugin :
             "setDynamicResolutionEnabled" -> handleSetDynamicResolutionEnabled(call, result)
             "setToneMappingFilmic" -> handleSetToneMappingFilmic(call, result)
             "setShadowsEnabled" -> handleSetShadowsEnabled(call, result)
+            "setWireframeEnabled" -> handleSetWireframeEnabled(call, result)
+            "setBoundingBoxesEnabled" -> handleSetBoundingBoxesEnabled(call, result)
+            "setDebugLoggingEnabled" -> handleSetDebugLoggingEnabled(call, result)
             "orbitStart" -> handleOrbitStart(call, result)
             "orbitDelta" -> handleOrbitDelta(call, result)
             "orbitEnd" -> handleOrbitEnd(call, result)
@@ -419,6 +422,24 @@ class FilamentWidgetPlugin :
         val controller = resolveController(call, result) ?: return
         val enabled = call.argument<Boolean>("enabled") ?: true
         controller.setShadowsEnabled(enabled, result)
+    }
+
+    private fun handleSetWireframeEnabled(call: MethodCall, result: Result) {
+        val controller = resolveController(call, result) ?: return
+        val enabled = call.argument<Boolean>("enabled") ?: false
+        controller.setWireframeEnabled(enabled, result)
+    }
+
+    private fun handleSetBoundingBoxesEnabled(call: MethodCall, result: Result) {
+        val controller = resolveController(call, result) ?: return
+        val enabled = call.argument<Boolean>("enabled") ?: false
+        controller.setBoundingBoxesEnabled(enabled, result)
+    }
+
+    private fun handleSetDebugLoggingEnabled(call: MethodCall, result: Result) {
+        val controller = resolveController(call, result) ?: return
+        val enabled = call.argument<Boolean>("enabled") ?: false
+        controller.setDebugLoggingEnabled(enabled, result)
     }
 
     private fun handleOrbitStart(call: MethodCall, result: Result) {

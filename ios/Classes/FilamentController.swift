@@ -39,6 +39,11 @@ final class FilamentController {
     let texture = FilamentTexture(pixelBuffer: pixelBuffer)
     let textureId = textureRegistry.register(texture)
     let renderer = FilamentRenderer()
+    renderer.setFpsCallback { [weak self] fps in
+      guard let self else { return }
+      let message = String(format: "%.2f", locale: Locale(identifier: "en_US_POSIX"), fps)
+      self.eventEmitter("fps", message)
+    }
     self.texture = texture
     self.textureId = textureId
     self.renderer = renderer
@@ -514,6 +519,39 @@ final class FilamentController {
     }
     renderLoop.perform {
       renderer.setShadowsEnabled(enabled)
+      DispatchQueue.main.async { result(nil) }
+    }
+  }
+
+  func setWireframeEnabled(_ enabled: Bool, result: @escaping FlutterResult) {
+    guard let renderer else {
+      result(nil)
+      return
+    }
+    renderLoop.perform {
+      renderer.setWireframeEnabled(enabled)
+      DispatchQueue.main.async { result(nil) }
+    }
+  }
+
+  func setBoundingBoxesEnabled(_ enabled: Bool, result: @escaping FlutterResult) {
+    guard let renderer else {
+      result(nil)
+      return
+    }
+    renderLoop.perform {
+      renderer.setBoundingBoxesEnabled(enabled)
+      DispatchQueue.main.async { result(nil) }
+    }
+  }
+
+  func setDebugLoggingEnabled(_ enabled: Bool, result: @escaping FlutterResult) {
+    guard let renderer else {
+      result(nil)
+      return
+    }
+    renderLoop.perform {
+      renderer.setDebugLoggingEnabled(enabled)
       DispatchQueue.main.async { result(nil) }
     }
   }

@@ -20,6 +20,7 @@ A new Flutter plugin project.
   s.vendored_frameworks = 'Filament.xcframework'
   s.frameworks = ['Metal', 'MetalKit', 'QuartzCore', 'CoreVideo', 'CoreGraphics', 'UIKit']
   s.libraries = 'c++'
+  s.resources = 'Resources/**/*'
 
   # Flutter.framework does not contain a i386 slice.
   s.pod_target_xcconfig = {
