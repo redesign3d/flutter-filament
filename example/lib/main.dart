@@ -84,8 +84,8 @@ class ExampleHome extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return BlocListener<ModelLoaderCubit, ModelLoaderState>(
-      listenWhen:
-          (previous, current) => !previous.modelLoaded && current.modelLoaded,
+      listenWhen: (previous, current) =>
+          !previous.modelLoaded && current.modelLoaded,
       listener: (context, state) {
         context.read<AnimationCubit>().loadAnimations();
       },
@@ -105,29 +105,28 @@ class ExampleHome extends StatelessWidget {
                 final isWide = constraints.maxWidth > 900;
                 return Padding(
                   padding: const EdgeInsets.all(16.0),
-                  child:
-                      isWide
-                          ? Row(
-                            crossAxisAlignment: CrossAxisAlignment.stretch,
-                            children: [
-                              Expanded(
-                                flex: 3,
-                                child: _ViewerPanel(controller: controller),
-                              ),
-                              const SizedBox(width: 16),
-                              const Expanded(flex: 2, child: _ControlPanel()),
-                            ],
-                          )
-                          : Column(
-                            children: [
-                              Expanded(
-                                flex: 5,
-                                child: _ViewerPanel(controller: controller),
-                              ),
-                              const SizedBox(height: 16),
-                              const Expanded(flex: 4, child: _ControlPanel()),
-                            ],
-                          ),
+                  child: isWide
+                      ? Row(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            Expanded(
+                              flex: 3,
+                              child: _ViewerPanel(controller: controller),
+                            ),
+                            const SizedBox(width: 16),
+                            const Expanded(flex: 2, child: _ControlPanel()),
+                          ],
+                        )
+                      : Column(
+                          children: [
+                            Expanded(
+                              flex: 5,
+                              child: _ViewerPanel(controller: controller),
+                            ),
+                            const SizedBox(height: 16),
+                            const Expanded(flex: 4, child: _ControlPanel()),
+                          ],
+                        ),
                 );
               },
             ),
@@ -206,10 +205,9 @@ class _ModelSection extends StatelessWidget {
       child: BlocBuilder<ModelLoaderCubit, ModelLoaderState>(
         builder: (context, state) {
           final cubit = context.read<ModelLoaderCubit>();
-          final statusColor =
-              state.errorMessage != null
-                  ? Colors.redAccent
-                  : const Color(0xFF1A1A1A);
+          final statusColor = state.errorMessage != null
+              ? Colors.redAccent
+              : const Color(0xFF1A1A1A);
           return Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [

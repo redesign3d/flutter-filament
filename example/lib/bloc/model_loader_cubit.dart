@@ -22,12 +22,12 @@ class ModelLoaderState extends Equatable {
   });
 
   const ModelLoaderState.initial()
-    : isLoading = false,
-      status = 'Ready.',
-      errorMessage = null,
-      cacheSizeBytes = 0,
-      lastLoadFromCache = false,
-      modelLoaded = false;
+      : isLoading = false,
+        status = 'Ready.',
+        errorMessage = null,
+        cacheSizeBytes = 0,
+        lastLoadFromCache = false,
+        modelLoaded = false;
 
   final bool isLoading;
   final String status;
@@ -56,13 +56,13 @@ class ModelLoaderState extends Equatable {
 
   @override
   List<Object?> get props => [
-    isLoading,
-    status,
-    errorMessage,
-    cacheSizeBytes,
-    lastLoadFromCache,
-    modelLoaded,
-  ];
+        isLoading,
+        status,
+        errorMessage,
+        cacheSizeBytes,
+        lastLoadFromCache,
+        modelLoaded,
+      ];
 }
 
 class ModelLoaderCubit extends Cubit<ModelLoaderState> {
@@ -90,10 +90,9 @@ class ModelLoaderCubit extends Cubit<ModelLoaderState> {
     final cacheSize = await _controller.getCacheSizeBytes();
     final cached = cacheSize > 0;
     await _loadModel(
-      label:
-          cached
-              ? 'BoxTextured (URL cache hit)'
-              : 'BoxTextured (URL download + cache)',
+      label: cached
+          ? 'BoxTextured (URL cache hit)'
+          : 'BoxTextured (URL download + cache)',
       load: () => _controller.loadModelFromUrl(kRemoteGlbUrl),
       lastLoadFromCache: cached,
     );

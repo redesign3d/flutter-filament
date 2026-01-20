@@ -15,12 +15,12 @@ class SettingsState extends Equatable {
   });
 
   const SettingsState.initial()
-    : shadowsEnabled = true,
-      msaaSamples = 2,
-      wireframeEnabled = false,
-      boundingBoxesEnabled = false,
-      debugLoggingEnabled = false,
-      fpsOverlayEnabled = false;
+      : shadowsEnabled = true,
+        msaaSamples = 2,
+        wireframeEnabled = false,
+        boundingBoxesEnabled = false,
+        debugLoggingEnabled = false,
+        fpsOverlayEnabled = false;
 
   final bool shadowsEnabled;
   final int msaaSamples;
@@ -49,13 +49,13 @@ class SettingsState extends Equatable {
 
   @override
   List<Object> get props => [
-    shadowsEnabled,
-    msaaSamples,
-    wireframeEnabled,
-    boundingBoxesEnabled,
-    debugLoggingEnabled,
-    fpsOverlayEnabled,
-  ];
+        shadowsEnabled,
+        msaaSamples,
+        wireframeEnabled,
+        boundingBoxesEnabled,
+        debugLoggingEnabled,
+        fpsOverlayEnabled,
+      ];
 }
 
 class SettingsCubit extends Cubit<SettingsState> {

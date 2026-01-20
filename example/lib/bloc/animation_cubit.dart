@@ -16,13 +16,13 @@ class AnimationState extends Equatable {
   });
 
   const AnimationState.initial()
-    : animationCount = 0,
-      selectedIndex = 0,
-      isPlaying = false,
-      loop = true,
-      durationSeconds = 0.0,
-      positionSeconds = 0.0,
-      speed = 1.0;
+      : animationCount = 0,
+        selectedIndex = 0,
+        isPlaying = false,
+        loop = true,
+        durationSeconds = 0.0,
+        positionSeconds = 0.0,
+        speed = 1.0;
 
   final int animationCount;
   final int selectedIndex;
@@ -54,14 +54,14 @@ class AnimationState extends Equatable {
 
   @override
   List<Object> get props => [
-    animationCount,
-    selectedIndex,
-    isPlaying,
-    loop,
-    durationSeconds,
-    positionSeconds,
-    speed,
-  ];
+        animationCount,
+        selectedIndex,
+        isPlaying,
+        loop,
+        durationSeconds,
+        positionSeconds,
+        speed,
+      ];
 }
 
 class AnimationCubit extends Cubit<AnimationState> {
