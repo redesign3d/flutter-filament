@@ -44,6 +44,12 @@ final class FilamentController {
       let message = String(format: "%.2f", locale: Locale(identifier: "en_US_POSIX"), fps)
       self.eventEmitter("fps", message)
     }
+    renderer.setFrameCallback { [weak self] in
+      guard let self else { return }
+      DispatchQueue.main.async {
+        self.textureRegistry.textureFrameAvailable(textureId)
+      }
+    }
     self.texture = texture
     self.textureId = textureId
     self.renderer = renderer
@@ -98,12 +104,14 @@ final class FilamentController {
       do {
         let data = try Data(contentsOf: url)
         self.renderLoop.perform {
+          renderer.setResourcePath(url.path)
           let uris = renderer.beginModelLoad(data)
           DispatchQueue.main.async {
             self.handleResourceUris(
               uris,
               baseURL: url.deletingLastPathComponent(),
               mode: .asset,
+              cacheRoot: nil,
               result: result
             )
           }
@@ -126,15 +134,31 @@ final class FilamentController {
     DispatchQueue.global(qos: .userInitiated).async { [weak self] in
       guard let self else { return }
       do {
-        let cached = try self.cacheManager.getOrDownload(url: url)
+        let isGltf = url.pathExtension.lowercased() == "gltf"
+        let cacheRoot: URL?
+        let cached: URL
+        if isGltf {
+          let modelDir = try self.cacheManager.modelCacheDirectory(for: url)
+          cached = try self.cacheManager.getOrDownload(
+            url: url,
+            cacheRoot: modelDir,
+            relativePath: url.lastPathComponent
+          )
+          cacheRoot = modelDir
+        } else {
+          cached = try self.cacheManager.getOrDownload(url: url)
+          cacheRoot = nil
+        }
         let data = try Data(contentsOf: cached)
         self.renderLoop.perform {
+          renderer.setResourcePath(cached.path)
           let uris = renderer.beginModelLoad(data)
           DispatchQueue.main.async {
             self.handleResourceUris(
               uris,
               baseURL: url.deletingLastPathComponent(),
               mode: .remote,
+              cacheRoot: cacheRoot,
               result: result
             )
           }
@@ -600,6 +624,7 @@ final class FilamentController {
     _ uris: [String],
     baseURL: URL,
     mode: ResourceMode,
+    cacheRoot: URL?,
     result: @escaping FlutterResult
   ) {
     guard let renderer else {
@@ -628,8 +653,17 @@ final class FilamentController {
             resources[uri] = try Data(contentsOf: resourceURL)
           case .remote:
             let resourceURL = URL(string: uri, relativeTo: baseURL)?.absoluteURL ?? baseURL.appendingPathComponent(uri)
-            let cached = try self.cacheManager.getOrDownload(url: resourceURL)
-            resources[uri] = try Data(contentsOf: cached)
+            if let cacheRoot {
+              let cached = try self.cacheManager.getOrDownload(
+                url: resourceURL,
+                cacheRoot: cacheRoot,
+                relativePath: uri
+              )
+              resources[uri] = try Data(contentsOf: cached)
+            } else {
+              let cached = try self.cacheManager.getOrDownload(url: resourceURL)
+              resources[uri] = try Data(contentsOf: cached)
+            }
           }
         }
         self.renderLoop.perform {
@@ -655,6 +689,7 @@ final class FilamentController {
   private func makePixelBuffer(width: Int, height: Int) -> CVPixelBuffer? {
     let attributes: [CFString: Any] = [
       kCVPixelBufferMetalCompatibilityKey: true,
+      kCVPixelBufferIOSurfacePropertiesKey: [:],
       kCVPixelBufferCGImageCompatibilityKey: true,
       kCVPixelBufferCGBitmapContextCompatibilityKey: true
     ]

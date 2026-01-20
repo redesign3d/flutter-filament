@@ -2,32 +2,18 @@ import Flutter
 import UIKit
 
 public class FilamentWidgetPlugin: NSObject, FlutterPlugin, FlutterStreamHandler {
-  private let textureRegistry: FlutterTextureRegistry
-  private let assetLookup: (String) -> String
-  private let renderLoop = FilamentRenderLoop.shared
-  private let cacheManager = FilamentCacheManager()
+  private weak var registrar: FlutterPluginRegistrar?
+  private var textureRegistry: FlutterTextureRegistry?
+  private var assetLookup: ((String) -> String)?
+  private lazy var renderLoop = FilamentRenderLoop.shared
+  private lazy var cacheManager = FilamentCacheManager()
   private var controllers: [Int: FilamentController] = [:]
   private var eventSinks: [Int: FlutterEventSink] = [:]
+  private var observingLifecycle = false
 
-  init(
-    textureRegistry: FlutterTextureRegistry,
-    assetLookup: @escaping (String) -> String
-  ) {
-    self.textureRegistry = textureRegistry
-    self.assetLookup = assetLookup
+  init(registrar: FlutterPluginRegistrar) {
+    self.registrar = registrar
     super.init()
-    NotificationCenter.default.addObserver(
-      self,
-      selector: #selector(appDidEnterBackground),
-      name: UIApplication.didEnterBackgroundNotification,
-      object: nil
-    )
-    NotificationCenter.default.addObserver(
-      self,
-      selector: #selector(appWillEnterForeground),
-      name: UIApplication.willEnterForegroundNotification,
-      object: nil
-    )
   }
 
   deinit {
@@ -35,14 +21,17 @@ public class FilamentWidgetPlugin: NSObject, FlutterPlugin, FlutterStreamHandler
   }
 
   public static func register(with registrar: FlutterPluginRegistrar) {
-    let channel = FlutterMethodChannel(name: "filament_widget", binaryMessenger: registrar.messenger())
-    let eventChannel = FlutterEventChannel(name: "filament_widget/events", binaryMessenger: registrar.messenger())
-    let instance = FilamentWidgetPlugin(
-      textureRegistry: registrar.textures(),
-      assetLookup: registrar.lookupKey(forAsset:)
-    )
+    NSLog("[FilamentWidget] register start")
+    let messenger = registrar.messenger()
+    NSLog("[FilamentWidget] messenger ready")
+    let channel = FlutterMethodChannel(name: "filament_widget", binaryMessenger: messenger)
+    let eventChannel = FlutterEventChannel(name: "filament_widget/events", binaryMessenger: messenger)
+    NSLog("[FilamentWidget] channels ready")
+    let instance = FilamentWidgetPlugin(registrar: registrar)
+    NSLog("[FilamentWidget] instance created")
     registrar.addMethodCallDelegate(instance, channel: channel)
     eventChannel.setStreamHandler(instance)
+    NSLog("[FilamentWidget] register done")
   }
 
   public func handle(_ call: FlutterMethodCall, result: @escaping FlutterResult) {
@@ -170,6 +159,19 @@ public class FilamentWidgetPlugin: NSObject, FlutterPlugin, FlutterStreamHandler
       result(FlutterError(code: "filament_error", message: "Missing controllerId.", details: nil))
       return
     }
+    startObservingLifecycleIfNeeded()
+    if textureRegistry == nil {
+      textureRegistry = registrar?.textures()
+    }
+    if assetLookup == nil {
+      assetLookup = { [weak registrar] assetPath in
+        registrar?.lookupKey(forAsset: assetPath) ?? assetPath
+      }
+    }
+    guard let textureRegistry, let assetLookup else {
+      result(FlutterError(code: "filament_error", message: "Filament plugin not ready.", details: nil))
+      return
+    }
     let controller = FilamentController(
       controllerId: controllerId,
       textureRegistry: textureRegistry,
@@ -181,6 +183,25 @@ public class FilamentWidgetPlugin: NSObject, FlutterPlugin, FlutterStreamHandler
     }
     controllers[controllerId] = controller
     result(nil)
+  }
+
+  private func startObservingLifecycleIfNeeded() {
+    if observingLifecycle {
+      return
+    }
+    observingLifecycle = true
+    NotificationCenter.default.addObserver(
+      self,
+      selector: #selector(appDidEnterBackground),
+      name: UIApplication.didEnterBackgroundNotification,
+      object: nil
+    )
+    NotificationCenter.default.addObserver(
+      self,
+      selector: #selector(appWillEnterForeground),
+      name: UIApplication.willEnterForegroundNotification,
+      object: nil
+    )
   }
 
   private func handleDisposeController(_ call: FlutterMethodCall, result: @escaping FlutterResult) {

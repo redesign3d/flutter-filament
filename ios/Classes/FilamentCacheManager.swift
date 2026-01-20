@@ -44,6 +44,29 @@ final class FilamentCacheManager {
     return target
   }
 
+  func getOrDownload(url: URL, cacheRoot: URL, relativePath: String) throws -> URL {
+    try ensureCacheDir()
+    try ensureDirectory(cacheRoot)
+    let safePath = sanitizeRelativePath(relativePath)
+    let target = cacheRoot.appendingPathComponent(safePath)
+    try ensureDirectory(target.deletingLastPathComponent())
+    if FileManager.default.fileExists(atPath: target.path) {
+      return target
+    }
+    let data = try Data(contentsOf: url)
+    try data.write(to: target, options: .atomic)
+    return target
+  }
+
+  func modelCacheDirectory(for url: URL) throws -> URL {
+    try ensureCacheDir()
+    let digest = SHA256.hash(data: Data(url.absoluteString.utf8))
+    let hash = digest.map { String(format: "%02x", $0) }.joined()
+    let dir = cacheDir.appendingPathComponent(hash, isDirectory: true)
+    try ensureDirectory(dir)
+    return dir
+  }
+
   private func cacheFileName(for url: URL) -> String {
     let digest = SHA256.hash(data: Data(url.absoluteString.utf8))
     let hash = digest.map { String(format: "%02x", $0) }.joined()
@@ -52,8 +75,23 @@ final class FilamentCacheManager {
   }
 
   private func ensureCacheDir() throws {
-    if !FileManager.default.fileExists(atPath: cacheDir.path) {
-      try FileManager.default.createDirectory(at: cacheDir, withIntermediateDirectories: true)
+    try ensureDirectory(cacheDir)
+  }
+
+  private func ensureDirectory(_ url: URL) throws {
+    if !FileManager.default.fileExists(atPath: url.path) {
+      try FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
     }
+  }
+
+  private func sanitizeRelativePath(_ path: String) -> String {
+    let cleaned = path.replacingOccurrences(of: "\\", with: "/")
+    if cleaned.isEmpty {
+      return "resource.bin"
+    }
+    if cleaned.contains("..") || cleaned.hasPrefix("/") {
+      return URL(fileURLWithPath: cleaned).lastPathComponent
+    }
+    return cleaned
   }
 }

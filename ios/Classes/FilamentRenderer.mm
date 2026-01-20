@@ -36,16 +36,27 @@
 #include <image/Ktx1Bundle.h>
 #include <ktxreader/Ktx1Reader.h>
 #include <math/vec3.h>
+#include "utils/JobSystem.h"
 #include <utils/Entity.h>
 #include <utils/EntityManager.h>
+#include <string>
 
 using namespace filament;
 using namespace filament::gltfio;
 using namespace utils;
 
+@interface FilamentRenderer ()
+- (void)applyResourcePath;
+@end
+
 namespace {
 Engine* SharedEngine() {
-    static Engine* engine = Engine::create(Engine::Backend::METAL);
+    static Engine* engine = []() {
+#if DEBUG
+        NSLog(@"[FilamentWidget] Creating Filament Engine on thread %@", [NSThread currentThread]);
+#endif
+        return Engine::create(Engine::Backend::METAL);
+    }();
     return engine;
 }
 
@@ -64,6 +75,17 @@ double DegreesToRadians(double degrees) {
 double LengthFloat3(const math::float3& value) {
     return std::sqrt(value.x * value.x + value.y * value.y + value.z * value.z);
 }
+
+void EnsureJobSystemAdopted(Engine* engine) {
+    static thread_local bool adopted = false;
+    if (!adopted && engine != nullptr) {
+#if DEBUG
+        NSLog(@"[FilamentWidget] Adopting JobSystem on thread %@", [NSThread currentThread]);
+#endif
+        engine->getJobSystem().adopt();
+        adopted = true;
+    }
+}
 }  // namespace
 
 @implementation FilamentRenderer {
@@ -81,6 +103,8 @@ double LengthFloat3(const math::float3& value) {
     ResourceLoader* _resourceLoader;
     FilamentAsset* _asset;
     FilamentAsset* _pendingAsset;
+    NSData* _pendingSourceData;
+    std::string _resourceRoot;
     Animator* _animator;
     IndirectLight* _indirectLight;
     Texture* _iblTexture;
@@ -122,6 +146,7 @@ double LengthFloat3(const math::float3& value) {
     bool _boundingBoxesEnabled;
     bool _debugLoggingEnabled;
     FilamentFpsCallback _fpsCallback;
+    FilamentFrameCallback _frameCallback;
     uint64_t _fpsStartTimeNanos;
     int _fpsFrameCount;
     int _animationIndex;
@@ -142,7 +167,7 @@ double LengthFloat3(const math::float3& value) {
 - (instancetype)init {
     self = [super init];
     if (self) {
-        _engine = SharedEngine();
+        _engine = nullptr;
         _renderer = nullptr;
         _view = nullptr;
         _scene = nullptr;
@@ -154,6 +179,7 @@ double LengthFloat3(const math::float3& value) {
         _resourceLoader = nullptr;
         _asset = nullptr;
         _pendingAsset = nullptr;
+        _pendingSourceData = nil;
         _animator = nullptr;
         _indirectLight = nullptr;
         _iblTexture = nullptr;
@@ -205,6 +231,7 @@ double LengthFloat3(const math::float3& value) {
         _boundingBoxesEnabled = false;
         _debugLoggingEnabled = false;
         _fpsCallback = nil;
+        _frameCallback = nil;
         _fpsStartTimeNanos = 0;
         _fpsFrameCount = 0;
         _animationIndex = 0;
@@ -227,6 +254,10 @@ double LengthFloat3(const math::float3& value) {
 - (void)setupWithPixelBuffer:(CVPixelBufferRef)pixelBuffer
                        width:(int)width
                       height:(int)height {
+    if (_engine == nullptr) {
+        _engine = SharedEngine();
+    }
+    EnsureJobSystemAdopted(_engine);
     if (_renderer == nullptr) {
         _renderer = _engine->createRenderer();
         _view = _engine->createView();
@@ -252,17 +283,21 @@ double LengthFloat3(const math::float3& value) {
 - (void)resizeWithPixelBuffer:(CVPixelBufferRef)pixelBuffer
                         width:(int)width
                        height:(int)height {
+    EnsureJobSystemAdopted(_engine);
     [self updateSwapChain:pixelBuffer width:width height:height];
 }
 
 - (NSArray<NSString *> *)beginModelLoad:(NSData *)data {
+    EnsureJobSystemAdopted(_engine);
     [self clearSceneInternal];
     if (_assetLoader == nullptr) {
         return @[];
     }
+    _pendingSourceData = data;
     const uint8_t* bytes = reinterpret_cast<const uint8_t*>(data.bytes);
     FilamentAsset* asset = _assetLoader->createAsset(bytes, (uint32_t)data.length);
     if (!asset) {
+        _pendingSourceData = nil;
         return @[];
     }
     _pendingAsset = asset;
@@ -278,6 +313,7 @@ double LengthFloat3(const math::float3& value) {
 }
 
 - (void)finishModelLoad:(NSDictionary<NSString *, NSData *> *)resources {
+    EnsureJobSystemAdopted(_engine);
     if (_pendingAsset == nullptr) {
         return;
     }
@@ -296,6 +332,7 @@ double LengthFloat3(const math::float3& value) {
     }
     _resourceLoader->loadResources(_pendingAsset);
     _pendingAsset->releaseSourceData();
+    _pendingSourceData = nil;
     _scene->addEntities(_pendingAsset->getEntities(), _pendingAsset->getEntityCount());
     _asset = _pendingAsset;
     _pendingAsset = nullptr;
@@ -311,6 +348,7 @@ double LengthFloat3(const math::float3& value) {
 }
 
 - (void)setIndirectLightFromKTX:(NSData *)data {
+    EnsureJobSystemAdopted(_engine);
     if (_scene == nullptr) {
         return;
     }
@@ -337,6 +375,7 @@ double LengthFloat3(const math::float3& value) {
 }
 
 - (void)setSkyboxFromKTX:(NSData *)data {
+    EnsureJobSystemAdopted(_engine);
     if (_scene == nullptr) {
         return;
     }
@@ -356,6 +395,7 @@ double LengthFloat3(const math::float3& value) {
 }
 
 - (void)frameModel:(BOOL)useWorldOrigin {
+    EnsureJobSystemAdopted(_engine);
     if (!_hasModelBounds || useWorldOrigin) {
         _orbitTarget = math::float3{0.0f, 0.0f, 0.0f};
     } else {
@@ -372,6 +412,7 @@ double LengthFloat3(const math::float3& value) {
                                maxPitch:(double)maxPitch
                                 minYaw:(double)minYaw
                                 maxYaw:(double)maxYaw {
+    EnsureJobSystemAdopted(_engine);
     _minPitchDeg = minPitch;
     _maxPitchDeg = maxPitch;
     _minYawDeg = minYaw;
@@ -380,32 +421,38 @@ double LengthFloat3(const math::float3& value) {
 }
 
 - (void)setInertiaEnabled:(BOOL)enabled {
+    EnsureJobSystemAdopted(_engine);
     _inertiaEnabled = enabled;
 }
 
 - (void)setInertiaParamsWithDamping:(double)damping sensitivity:(double)sensitivity {
+    EnsureJobSystemAdopted(_engine);
     _damping = damping;
     _sensitivity = sensitivity;
 }
 
 - (void)setZoomLimitsWithMinDistance:(double)minDistance maxDistance:(double)maxDistance {
+    EnsureJobSystemAdopted(_engine);
     _minDistance = minDistance;
     _maxDistance = maxDistance;
     _distance = ClampValue(_distance, _minDistance, _maxDistance);
 }
 
 - (void)orbitStart {
+    EnsureJobSystemAdopted(_engine);
     _velocityYaw = 0.0;
     _velocityPitch = 0.0;
 }
 
 - (void)orbitDeltaWithDx:(double)dx dy:(double)dy {
+    EnsureJobSystemAdopted(_engine);
     _yawDeg += dx * _sensitivity;
     _pitchDeg += dy * _sensitivity;
     [self clampAngles];
 }
 
 - (void)orbitEndWithVelocityX:(double)velocityX velocityY:(double)velocityY {
+    EnsureJobSystemAdopted(_engine);
     if (!_inertiaEnabled) {
         _velocityYaw = 0.0;
         _velocityPitch = 0.0;
@@ -416,6 +463,7 @@ double LengthFloat3(const math::float3& value) {
 }
 
 - (void)zoomDelta:(double)scaleDelta {
+    EnsureJobSystemAdopted(_engine);
     if (scaleDelta <= 0.0) {
         return;
     }
@@ -423,6 +471,7 @@ double LengthFloat3(const math::float3& value) {
 }
 
 - (void)setCustomCameraEnabled:(BOOL)enabled {
+    EnsureJobSystemAdopted(_engine);
     _customCameraEnabled = enabled;
 }
 
@@ -435,6 +484,7 @@ double LengthFloat3(const math::float3& value) {
                                   upX:(double)upX
                                   upY:(double)upY
                                   upZ:(double)upZ {
+    EnsureJobSystemAdopted(_engine);
     _customLookAt[0] = eyeX;
     _customLookAt[1] = eyeY;
     _customLookAt[2] = eyeZ;
@@ -449,12 +499,14 @@ double LengthFloat3(const math::float3& value) {
 - (void)setCustomPerspectiveWithFov:(double)fovDegrees
                                near:(double)nearPlane
                                 far:(double)farPlane {
+    EnsureJobSystemAdopted(_engine);
     _customPerspective[0] = fovDegrees;
     _customPerspective[1] = nearPlane;
     _customPerspective[2] = farPlane;
 }
 
 - (void)setMsaa:(int)samples {
+    EnsureJobSystemAdopted(_engine);
     if (samples == 2 || samples == 4) {
         _msaaSamples = samples;
     } else {
@@ -466,6 +518,7 @@ double LengthFloat3(const math::float3& value) {
 }
 
 - (void)setDynamicResolutionEnabled:(BOOL)enabled {
+    EnsureJobSystemAdopted(_engine);
     _dynamicResolutionEnabled = enabled;
     if (!_view) {
         return;
@@ -479,6 +532,7 @@ double LengthFloat3(const math::float3& value) {
 }
 
 - (void)setToneMappingFilmic {
+    EnsureJobSystemAdopted(_engine);
     if (!_view) {
         return;
     }
@@ -493,22 +547,26 @@ double LengthFloat3(const math::float3& value) {
 }
 
 - (void)setShadowsEnabled:(BOOL)enabled {
+    EnsureJobSystemAdopted(_engine);
     if (_view) {
         _view->setShadowingEnabled(enabled);
     }
 }
 
 - (void)setWireframeEnabled:(BOOL)enabled {
+    EnsureJobSystemAdopted(_engine);
     _wireframeEnabled = enabled;
     [self updateWireframe];
 }
 
 - (void)setBoundingBoxesEnabled:(BOOL)enabled {
+    EnsureJobSystemAdopted(_engine);
     _boundingBoxesEnabled = enabled;
     [self rebuildBoundsRenderable];
 }
 
 - (void)setDebugLoggingEnabled:(BOOL)enabled {
+    EnsureJobSystemAdopted(_engine);
     _debugLoggingEnabled = enabled;
     [self logDebug:[NSString stringWithFormat:@"Debug logging %@.", enabled ? @"enabled" : @"disabled"]];
 }
@@ -517,11 +575,27 @@ double LengthFloat3(const math::float3& value) {
     _fpsCallback = [callback copy];
 }
 
+- (void)setFrameCallback:(FilamentFrameCallback)callback {
+    _frameCallback = [callback copy];
+}
+
+- (void)setResourcePath:(NSString *)path {
+    EnsureJobSystemAdopted(_engine);
+    if (path.length == 0) {
+        _resourceRoot.clear();
+    } else {
+        _resourceRoot = std::string(path.UTF8String);
+    }
+    [self applyResourcePath];
+}
+
 - (int)getAnimationCount {
+    EnsureJobSystemAdopted(_engine);
     return _animator ? (int)_animator->getAnimationCount() : 0;
 }
 
 - (double)getAnimationDuration:(int)index {
+    EnsureJobSystemAdopted(_engine);
     if (!_animator || index < 0 || index >= (int)_animator->getAnimationCount()) {
         return 0.0;
     }
@@ -529,6 +603,7 @@ double LengthFloat3(const math::float3& value) {
 }
 
 - (void)playAnimation:(int)index loop:(BOOL)loop {
+    EnsureJobSystemAdopted(_engine);
     if (!_animator || _animator->getAnimationCount() == 0) {
         return;
     }
@@ -542,11 +617,13 @@ double LengthFloat3(const math::float3& value) {
 }
 
 - (void)pauseAnimation {
+    EnsureJobSystemAdopted(_engine);
     _animationPlaying = false;
     _lastAnimationFrameNanos = 0;
 }
 
 - (void)seekAnimation:(double)seconds {
+    EnsureJobSystemAdopted(_engine);
     if (!_animator) {
         return;
     }
@@ -561,14 +638,17 @@ double LengthFloat3(const math::float3& value) {
 }
 
 - (void)setAnimationSpeed:(double)speed {
+    EnsureJobSystemAdopted(_engine);
     _animationSpeed = speed;
 }
 
 - (void)clearScene {
+    EnsureJobSystemAdopted(_engine);
     [self clearSceneInternal];
 }
 
 - (void)renderFrame:(uint64_t)frameTimeNanos {
+    EnsureJobSystemAdopted(_engine);
     if (_paused) {
         return;
     }
@@ -580,6 +660,9 @@ double LengthFloat3(const math::float3& value) {
     if (_renderer->beginFrame(_swapChain, frameTimeNanos)) {
         _renderer->render(_view);
         _renderer->endFrame();
+        if (_frameCallback) {
+            _frameCallback();
+        }
         [self updateFps:frameTimeNanos];
     }
 }
@@ -631,6 +714,7 @@ double LengthFloat3(const math::float3& value) {
         _engine->destroy(_wireframeMaterialInstance);
         _wireframeMaterialInstance = nullptr;
     }
+    _frameCallback = nil;
     if (_boundsMaterialInstance) {
         _engine->destroy(_boundsMaterialInstance);
         _boundsMaterialInstance = nullptr;
@@ -697,13 +781,28 @@ double LengthFloat3(const math::float3& value) {
 
     ResourceConfiguration resourceConfig;
     resourceConfig.engine = _engine;
-    resourceConfig.gltfPath = nullptr;
+    resourceConfig.gltfPath = _resourceRoot.empty() ? nullptr : _resourceRoot.c_str();
     resourceConfig.normalizeSkinningWeights = true;
     _resourceLoader = new ResourceLoader(resourceConfig);
 
     _textureProvider = createStbProvider(_engine);
     _resourceLoader->addTextureProvider("image/png", _textureProvider);
     _resourceLoader->addTextureProvider("image/jpeg", _textureProvider);
+    [self applyResourcePath];
+}
+
+- (void)applyResourcePath {
+    if (_resourceLoader == nullptr) {
+        return;
+    }
+    if (_resourceRoot.empty()) {
+        return;
+    }
+    ResourceConfiguration resourceConfig;
+    resourceConfig.engine = _engine;
+    resourceConfig.gltfPath = _resourceRoot.c_str();
+    resourceConfig.normalizeSkinningWeights = true;
+    _resourceLoader->setConfiguration(resourceConfig);
 }
 
 - (void)updateSwapChain:(CVPixelBufferRef)pixelBuffer
@@ -737,6 +836,7 @@ double LengthFloat3(const math::float3& value) {
         _assetLoader->destroyAsset(_pendingAsset);
         _pendingAsset = nullptr;
     }
+    _pendingSourceData = nil;
     if (_scene && _wireframeEntity) {
         _scene->remove(_wireframeEntity);
         _wireframeEntity.clear();

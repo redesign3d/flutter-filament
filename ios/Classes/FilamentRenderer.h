@@ -4,6 +4,7 @@
 NS_ASSUME_NONNULL_BEGIN
 
 typedef void (^FilamentFpsCallback)(double fps);
+typedef void (^FilamentFrameCallback)(void);
 
 @interface FilamentRenderer : NSObject
 
@@ -75,6 +76,8 @@ typedef void (^FilamentFpsCallback)(double fps);
 - (void)setDebugLoggingEnabled:(BOOL)enabled;
 
 - (void)setFpsCallback:(nullable FilamentFpsCallback)callback;
+- (void)setFrameCallback:(nullable FilamentFrameCallback)callback;
+- (void)setResourcePath:(NSString *)path;
 
 - (int)getAnimationCount;
 

@@ -14,7 +14,7 @@ A new Flutter plugin project.
   s.author           = { 'Your Company' => 'email@example.com' }
   s.source           = { :path => '.' }
   s.source_files = 'Classes/**/*'
-  s.public_header_files = 'Classes/**/*.h'
+  s.public_header_files = 'Classes/FilamentRenderer.h'
   s.dependency 'Flutter'
   s.platform = :ios, '14.0'
   s.vendored_frameworks = 'Filament.xcframework'
@@ -28,7 +28,7 @@ A new Flutter plugin project.
     'CLANG_CXX_LANGUAGE_STANDARD' => 'c++17',
     'CLANG_CXX_LIBRARY' => 'libc++',
     'EXCLUDED_ARCHS[sdk=iphonesimulator*]' => 'i386 arm64',
-    'HEADER_SEARCH_PATHS' => '"$(PODS_TARGET_SRCROOT)/Filament.xcframework/ios-arm64/Headers" "$(PODS_TARGET_SRCROOT)/Filament.xcframework/ios-x86_64-simulator/Headers"'
+    'HEADER_SEARCH_PATHS' => '"$(PODS_TARGET_SRCROOT)/Classes" "$(PODS_TARGET_SRCROOT)/Filament.xcframework/ios-arm64/Headers" "$(PODS_TARGET_SRCROOT)/Filament.xcframework/ios-x86_64-simulator/Headers"'
   }
   s.swift_version = '5.0'
 
