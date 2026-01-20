@@ -179,42 +179,56 @@ class _FilamentGestureLayer extends StatefulWidget {
 class _FilamentGestureLayerState extends State<_FilamentGestureLayer> {
   Offset? _lastFocalPoint;
   double _lastScale = 1.0;
+  int _lastPointerCount = 0;
 
   @override
   Widget build(BuildContext context) {
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
-      onPanStart: (details) {
-        _lastFocalPoint = details.localPosition;
-        widget.controller.handleOrbitStart();
-      },
-      onPanUpdate: (details) {
-        _lastFocalPoint ??= details.localPosition;
-        final delta = details.localPosition - _lastFocalPoint!;
-        _lastFocalPoint = details.localPosition;
-        widget.controller.handleOrbitDelta(delta.dx, delta.dy);
-      },
-      onPanEnd: (details) {
-        widget.controller.handleOrbitEnd(
-          velocityX: details.velocity.pixelsPerSecond.dx,
-          velocityY: details.velocity.pixelsPerSecond.dy,
-        );
-        _lastFocalPoint = null;
-      },
       onScaleStart: (details) {
+        _lastPointerCount = details.pointerCount;
         _lastScale = 1.0;
+        _lastFocalPoint = details.focalPoint;
         widget.controller.handleZoomStart();
-      },
-      onScaleUpdate: (details) {
-        final scaleDelta = details.scale / _lastScale;
-        _lastScale = details.scale;
-        if (scaleDelta.isFinite && scaleDelta != 1.0) {
-          widget.controller.handleZoomDelta(scaleDelta);
+        if (_lastPointerCount == 1) {
+          widget.controller.handleOrbitStart();
         }
       },
-      onScaleEnd: (_) {
+      onScaleUpdate: (details) {
+        final pointerCount = details.pointerCount;
+        if (pointerCount != _lastPointerCount) {
+          _lastPointerCount = pointerCount;
+          _lastScale = 1.0;
+          _lastFocalPoint = details.focalPoint;
+          if (pointerCount == 1) {
+            widget.controller.handleOrbitStart();
+          }
+        }
+        final scaleDelta = details.scale / _lastScale;
+        _lastScale = details.scale;
+        if (pointerCount <= 1) {
+          final previous = _lastFocalPoint ?? details.focalPoint;
+          final delta = details.focalPoint - previous;
+          _lastFocalPoint = details.focalPoint;
+          widget.controller.handleOrbitDelta(delta.dx, delta.dy);
+        } else {
+          _lastFocalPoint = details.focalPoint;
+          if (scaleDelta.isFinite && scaleDelta != 1.0) {
+            widget.controller.handleZoomDelta(scaleDelta);
+          }
+        }
+      },
+      onScaleEnd: (details) {
+        if (_lastPointerCount == 1) {
+          widget.controller.handleOrbitEnd(
+            velocityX: details.velocity.pixelsPerSecond.dx,
+            velocityY: details.velocity.pixelsPerSecond.dy,
+          );
+        }
         widget.controller.handleZoomEnd();
         _lastScale = 1.0;
+        _lastPointerCount = 0;
+        _lastFocalPoint = null;
       },
       child: widget.child,
     );
@@ -254,8 +268,9 @@ class FilamentController {
       'controllerId': _controllerId,
     });
     _eventSub = _eventChannel
-        .receiveBroadcastStream({'controllerId': _controllerId})
-        .listen(_handleEvent, onError: _eventController.addError);
+        .receiveBroadcastStream({'controllerId': _controllerId}).listen(
+            _handleEvent,
+            onError: _eventController.addError);
     _initialized = true;
   }
 
