@@ -313,23 +313,10 @@ void EnsureJobSystemAdopted(Engine* engine) {
     return list;
 }
 
-- (void)finishModelLoad:(NSDictionary<NSString *, NSData *> *)resources {
+- (BOOL)finishModelLoad:(NSDictionary<NSString *, NSData *> *)resources {
     EnsureJobSystemAdopted(_engine);
-    if (_pendingAsset == nullptr) {
-        return;
-    }
-    if (_resourceLoader == nullptr) {
-        return;
-    }
-    std::string baseDir;
-    if (!_resourceRoot.empty()) {
-        baseDir = _resourceRoot;
-        const size_t slash = baseDir.find_last_of('/');
-        if (slash != std::string::npos) {
-            baseDir = baseDir.substr(0, slash + 1);
-        } else {
-            baseDir.clear();
-        }
+    if (_pendingAsset == nullptr || _resourceLoader == nullptr) {
+        return NO;
     }
     std::unordered_set<std::string> addedKeys;
     auto addResource = [&](const std::string& key, NSData* data) {
@@ -344,24 +331,52 @@ void EnsureJobSystemAdopted(Engine* engine) {
         ResourceLoader::BufferDescriptor descriptor(buffer, data.length, ReleaseBuffer);
         _resourceLoader->addResourceData(key.c_str(), std::move(descriptor));
     };
+    auto combinePath = [&](const std::string& base, const std::string& uri) -> std::string {
+        if (base.empty() || uri.empty()) {
+            return uri;
+        }
+        const size_t slash = base.find_last_of("/\\");
+        if (slash == std::string::npos) {
+            return uri;
+        }
+        return base.substr(0, slash + 1) + uri;
+    };
+    auto addResourceVariants = [&](const std::string& uri, NSData* data) {
+        addResource(uri, data);
+        if (!uri.empty()) {
+            addResource(combinePath(_resourceRoot, uri), data);
+            if (uri.rfind("./", 0) == 0 && uri.size() > 2) {
+                std::string trimmed = uri.substr(2);
+                addResource(trimmed, data);
+                addResource(combinePath(_resourceRoot, trimmed), data);
+            }
+        }
+    };
     for (NSString* key in resources) {
         NSData* data = resources[key];
         if (data.length == 0) {
             continue;
         }
         std::string uri(key.UTF8String);
-        addResource(uri, data);
-        if (!baseDir.empty() && !uri.empty() && uri.front() != '/' &&
-            uri.find("://") == std::string::npos) {
-            addResource(baseDir + uri, data);
-            if (uri.rfind("./", 0) == 0 && uri.size() > 2) {
-                std::string trimmed = uri.substr(2);
-                addResource(trimmed, data);
-                addResource(baseDir + trimmed, data);
-            }
+        addResourceVariants(uri, data);
+        NSString* decodedKey = [key stringByRemovingPercentEncoding];
+        if (decodedKey && ![decodedKey isEqualToString:key]) {
+            std::string decodedUri(decodedKey.UTF8String);
+            addResourceVariants(decodedUri, data);
         }
     }
-    _resourceLoader->loadResources(_pendingAsset);
+    const bool loaded = _resourceLoader->loadResources(_pendingAsset);
+    if (!loaded) {
+        [self logDebug:@"ResourceLoader failed to load resources."];
+        if (_assetLoader) {
+            _assetLoader->destroyAsset(_pendingAsset);
+        }
+        _pendingAsset = nullptr;
+        _pendingSourceData = nil;
+        _resourceLoader->evictResourceData();
+        return NO;
+    }
+    _engine->flushAndWait();
     _pendingAsset->releaseSourceData();
     _pendingSourceData = nil;
     _scene->addEntities(_pendingAsset->getEntities(), _pendingAsset->getEntityCount());
@@ -376,6 +391,7 @@ void EnsureJobSystemAdopted(Engine* engine) {
     _lastAnimationFrameNanos = 0;
     [self updateWireframe];
     [self rebuildBoundsRenderable];
+    return YES;
 }
 
 - (void)setIndirectLightFromKTX:(NSData *)data {

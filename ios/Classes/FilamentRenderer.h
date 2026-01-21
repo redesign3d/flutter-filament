@@ -18,7 +18,7 @@ typedef void (^FilamentFrameCallback)(void);
 
 - (NSArray<NSString *> *)beginModelLoad:(NSData *)data;
 
-- (void)finishModelLoad:(NSDictionary<NSString *, NSData *> *)resources;
+- (BOOL)finishModelLoad:(NSDictionary<NSString *, NSData *> *)resources;
 
 - (void)setIndirectLightFromKTX:(NSData *)data;
 

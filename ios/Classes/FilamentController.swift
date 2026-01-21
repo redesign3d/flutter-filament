@@ -633,10 +633,16 @@ final class FilamentController {
     }
     if uris.isEmpty {
       renderLoop.perform {
-        renderer.finishModelLoad([:])
+        let loaded = renderer.finishModelLoad([:])
+        DispatchQueue.main.async {
+          if loaded {
+            self.eventEmitter("modelLoaded", "Model loaded.")
+            result(nil)
+          } else {
+            self.emitError("Failed to load model resources.", result: result)
+          }
+        }
       }
-      eventEmitter("modelLoaded", "Model loaded.")
-      result(nil)
       return
     }
     DispatchQueue.global(qos: .userInitiated).async { [weak self] in
@@ -667,11 +673,15 @@ final class FilamentController {
           }
         }
         self.renderLoop.perform {
-          renderer.finishModelLoad(resources)
-        }
-        DispatchQueue.main.async {
-          self.eventEmitter("modelLoaded", "Model loaded.")
-          result(nil)
+          let loaded = renderer.finishModelLoad(resources)
+          DispatchQueue.main.async {
+            if loaded {
+              self.eventEmitter("modelLoaded", "Model loaded.")
+              result(nil)
+            } else {
+              self.emitError("Failed to load model resources.", result: result)
+            }
+          }
         }
       } catch {
         self.emitError("Failed to load resources: \(error.localizedDescription)", result: result)
