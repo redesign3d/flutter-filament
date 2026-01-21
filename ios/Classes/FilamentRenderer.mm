@@ -39,6 +39,7 @@
 #include "utils/JobSystem.h"
 #include <utils/Entity.h>
 #include <utils/EntityManager.h>
+#include <unordered_set>
 #include <string>
 
 using namespace filament;
@@ -320,15 +321,45 @@ void EnsureJobSystemAdopted(Engine* engine) {
     if (_resourceLoader == nullptr) {
         return;
     }
+    std::string baseDir;
+    if (!_resourceRoot.empty()) {
+        baseDir = _resourceRoot;
+        const size_t slash = baseDir.find_last_of('/');
+        if (slash != std::string::npos) {
+            baseDir = baseDir.substr(0, slash + 1);
+        } else {
+            baseDir.clear();
+        }
+    }
+    std::unordered_set<std::string> addedKeys;
+    auto addResource = [&](const std::string& key, NSData* data) {
+        if (key.empty()) {
+            return;
+        }
+        if (!addedKeys.insert(key).second) {
+            return;
+        }
+        void* buffer = malloc(data.length);
+        memcpy(buffer, data.bytes, data.length);
+        ResourceLoader::BufferDescriptor descriptor(buffer, data.length, ReleaseBuffer);
+        _resourceLoader->addResourceData(key.c_str(), std::move(descriptor));
+    };
     for (NSString* key in resources) {
         NSData* data = resources[key];
         if (data.length == 0) {
             continue;
         }
-        void* buffer = malloc(data.length);
-        memcpy(buffer, data.bytes, data.length);
-        ResourceLoader::BufferDescriptor descriptor(buffer, data.length, ReleaseBuffer);
-        _resourceLoader->addResourceData(key.UTF8String, std::move(descriptor));
+        std::string uri(key.UTF8String);
+        addResource(uri, data);
+        if (!baseDir.empty() && !uri.empty() && uri.front() != '/' &&
+            uri.find("://") == std::string::npos) {
+            addResource(baseDir + uri, data);
+            if (uri.rfind("./", 0) == 0 && uri.size() > 2) {
+                std::string trimmed = uri.substr(2);
+                addResource(trimmed, data);
+                addResource(baseDir + trimmed, data);
+            }
+        }
     }
     _resourceLoader->loadResources(_pendingAsset);
     _pendingAsset->releaseSourceData();
@@ -995,12 +1026,20 @@ void EnsureJobSystemAdopted(Engine* engine) {
         );
     }
     _wireframeEntity = _asset->getWireframe();
+    if (!_wireframeEntity) {
+        [self logDebug:@"Wireframe entity unavailable."];
+        return;
+    }
     RenderableManager& rm = _engine->getRenderableManager();
     auto instance = rm.getInstance(_wireframeEntity);
-    if (instance) {
-        rm.setMaterialInstanceAt(instance, 0, _wireframeMaterialInstance);
+    if (!instance) {
+        [self logDebug:@"Wireframe renderable not ready."];
+        return;
     }
-    _scene->addEntity(_wireframeEntity);
+    rm.setMaterialInstanceAt(instance, 0, _wireframeMaterialInstance);
+    if (!_scene->hasEntity(_wireframeEntity)) {
+        _scene->addEntity(_wireframeEntity);
+    }
     [self logDebug:@"Wireframe enabled."];
 }
 
@@ -1079,7 +1118,7 @@ void EnsureJobSystemAdopted(Engine* engine) {
 
 - (void)destroyBoundsRenderable {
     if (_boundsEntity) {
-        if (_scene) {
+        if (_scene && _scene->hasEntity(_boundsEntity)) {
             _scene->remove(_boundsEntity);
         }
         _engine->destroy(_boundsEntity);
