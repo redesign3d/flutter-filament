@@ -210,7 +210,7 @@ class _FilamentGestureLayerState extends State<_FilamentGestureLayer> {
           final previous = _lastFocalPoint ?? details.focalPoint;
           final delta = details.focalPoint - previous;
           _lastFocalPoint = details.focalPoint;
-          widget.controller.handleOrbitDelta(delta.dx, delta.dy);
+          widget.controller.handleOrbitDelta(-delta.dx, delta.dy);
         } else {
           _lastFocalPoint = details.focalPoint;
           if (scaleDelta.isFinite && scaleDelta != 1.0) {
@@ -221,7 +221,7 @@ class _FilamentGestureLayerState extends State<_FilamentGestureLayer> {
       onScaleEnd: (details) {
         if (_lastPointerCount == 1) {
           widget.controller.handleOrbitEnd(
-            velocityX: details.velocity.pixelsPerSecond.dx,
+            velocityX: -details.velocity.pixelsPerSecond.dx,
             velocityY: details.velocity.pixelsPerSecond.dy,
           );
         }
