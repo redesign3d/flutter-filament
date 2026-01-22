@@ -8,7 +8,7 @@ void main() {
 
   testWidgets('load BoomBox and toggle debug overlays', (tester) async {
     app.main();
-    await tester.pumpAndSettle(const Duration(seconds: 2));
+    await tester.pump(const Duration(seconds: 2));
 
     final boomBoxButton = find.text('Load BoomBox (glTF)');
     expect(boomBoxButton, findsOneWidget);

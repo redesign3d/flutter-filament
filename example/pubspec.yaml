@@ -19,6 +19,7 @@ dependencies:
   flutter_bloc: ^8.1.6
   equatable: ^2.0.5
   google_fonts: ^6.2.1
+  file_picker: ^8.1.6
 
   filament_widget:
     # When depending on this package from a real application you should use:

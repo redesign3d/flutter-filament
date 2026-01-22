@@ -8,6 +8,7 @@ class SettingsState extends Equatable {
   const SettingsState({
     required this.shadowsEnabled,
     required this.msaaSamples,
+    required this.environmentEnabled,
     required this.wireframeEnabled,
     required this.boundingBoxesEnabled,
     required this.debugLoggingEnabled,
@@ -17,6 +18,7 @@ class SettingsState extends Equatable {
   const SettingsState.initial()
       : shadowsEnabled = true,
         msaaSamples = 2,
+        environmentEnabled = true,
         wireframeEnabled = false,
         boundingBoxesEnabled = false,
         debugLoggingEnabled = false,
@@ -24,6 +26,7 @@ class SettingsState extends Equatable {
 
   final bool shadowsEnabled;
   final int msaaSamples;
+  final bool environmentEnabled;
   final bool wireframeEnabled;
   final bool boundingBoxesEnabled;
   final bool debugLoggingEnabled;
@@ -32,6 +35,7 @@ class SettingsState extends Equatable {
   SettingsState copyWith({
     bool? shadowsEnabled,
     int? msaaSamples,
+    bool? environmentEnabled,
     bool? wireframeEnabled,
     bool? boundingBoxesEnabled,
     bool? debugLoggingEnabled,
@@ -40,6 +44,7 @@ class SettingsState extends Equatable {
     return SettingsState(
       shadowsEnabled: shadowsEnabled ?? this.shadowsEnabled,
       msaaSamples: msaaSamples ?? this.msaaSamples,
+      environmentEnabled: environmentEnabled ?? this.environmentEnabled,
       wireframeEnabled: wireframeEnabled ?? this.wireframeEnabled,
       boundingBoxesEnabled: boundingBoxesEnabled ?? this.boundingBoxesEnabled,
       debugLoggingEnabled: debugLoggingEnabled ?? this.debugLoggingEnabled,
@@ -51,6 +56,7 @@ class SettingsState extends Equatable {
   List<Object> get props => [
         shadowsEnabled,
         msaaSamples,
+        environmentEnabled,
         wireframeEnabled,
         boundingBoxesEnabled,
         debugLoggingEnabled,
@@ -76,6 +82,11 @@ class SettingsCubit extends Cubit<SettingsState> {
     await _controller.setMsaa(normalized);
   }
 
+  Future<void> setEnvironmentEnabled(bool enabled) async {
+    emit(state.copyWith(environmentEnabled: enabled));
+    await _controller.setEnvironmentEnabled(enabled);
+  }
+
   Future<void> setWireframeEnabled(bool enabled) async {
     emit(state.copyWith(wireframeEnabled: enabled));
     await _controller.setWireframeEnabled(enabled);
@@ -99,6 +110,7 @@ class SettingsCubit extends Cubit<SettingsState> {
     await _controller.setMsaa(state.msaaSamples);
     await _controller.setDynamicResolutionEnabled(true);
     await _controller.setToneMappingFilmic();
+    await _controller.setEnvironmentEnabled(state.environmentEnabled);
     await _controller.setShadowsEnabled(state.shadowsEnabled);
     await _controller.setWireframeEnabled(state.wireframeEnabled);
     await _controller.setBoundingBoxesEnabled(state.boundingBoxesEnabled);

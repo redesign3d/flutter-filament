@@ -8,8 +8,33 @@ const String kAssetGlbPath = 'assets/models/Avocado.glb';
 const String kAssetGltfPath = 'assets/models/BoomBox/BoomBox.gltf';
 const String kRemoteGlbUrl =
     'https://raw.githubusercontent.com/KhronosGroup/glTF-Sample-Models/master/2.0/BoxTextured/glTF-Binary/BoxTextured.glb';
+const String kRemoteBoxAnimatedUrl =
+    'https://raw.githubusercontent.com/KhronosGroup/glTF-Sample-Models/master/2.0/BoxAnimated/glTF-Binary/BoxAnimated.glb';
+const String kRemoteClearCoatCarPaintUrl =
+    'https://raw.githubusercontent.com/KhronosGroup/glTF-Sample-Models/master/2.0/ClearCoatCarPaint/glTF-Binary/ClearCoatCarPaint.glb';
+const String kRemoteDamagedHelmetUrl =
+    'https://raw.githubusercontent.com/KhronosGroup/glTF-Sample-Models/master/2.0/DamagedHelmet/glTF-Binary/DamagedHelmet.glb';
+const String kRemoteDirectionalLightUrl =
+    'https://raw.githubusercontent.com/KhronosGroup/glTF-Sample-Models/master/2.0/DirectionalLight/glTF-Binary/DirectionalLight.glb';
+const String kRemoteRiggedFigureUrl =
+    'https://raw.githubusercontent.com/KhronosGroup/glTF-Sample-Models/master/2.0/RiggedFigure/glTF-Binary/RiggedFigure.glb';
+const String kRemoteMetalRoughSpheresUrl =
+    'https://raw.githubusercontent.com/KhronosGroup/glTF-Sample-Models/master/2.0/MetalRoughSpheres/glTF-Binary/MetalRoughSpheres.glb';
 const String kIblAssetPath = 'assets/envs/filament_env_ibl.ktx';
 const String kSkyboxAssetPath = 'assets/envs/filament_env_skybox.ktx';
+
+enum DemoModelId {
+  avocadoGlb,
+  boomBoxGltf,
+  boxTexturedUrl,
+  boxAnimatedUrl,
+  clearCoatCarPaintUrl,
+  damagedHelmetUrl,
+  directionalLightUrl,
+  riggedFigureUrl,
+  metalRoughSpheresUrl,
+  localFile,
+}
 
 class ModelLoaderState extends Equatable {
   const ModelLoaderState({
@@ -19,6 +44,7 @@ class ModelLoaderState extends Equatable {
     required this.cacheSizeBytes,
     required this.lastLoadFromCache,
     required this.modelLoaded,
+    required this.selectedModelId,
   });
 
   const ModelLoaderState.initial()
@@ -27,7 +53,8 @@ class ModelLoaderState extends Equatable {
         errorMessage = null,
         cacheSizeBytes = 0,
         lastLoadFromCache = false,
-        modelLoaded = false;
+        modelLoaded = false,
+        selectedModelId = null;
 
   final bool isLoading;
   final String status;
@@ -35,6 +62,7 @@ class ModelLoaderState extends Equatable {
   final int cacheSizeBytes;
   final bool lastLoadFromCache;
   final bool modelLoaded;
+  final DemoModelId? selectedModelId;
 
   ModelLoaderState copyWith({
     bool? isLoading,
@@ -43,6 +71,7 @@ class ModelLoaderState extends Equatable {
     int? cacheSizeBytes,
     bool? lastLoadFromCache,
     bool? modelLoaded,
+    DemoModelId? selectedModelId,
   }) {
     return ModelLoaderState(
       isLoading: isLoading ?? this.isLoading,
@@ -51,6 +80,7 @@ class ModelLoaderState extends Equatable {
       cacheSizeBytes: cacheSizeBytes ?? this.cacheSizeBytes,
       lastLoadFromCache: lastLoadFromCache ?? this.lastLoadFromCache,
       modelLoaded: modelLoaded ?? this.modelLoaded,
+      selectedModelId: selectedModelId ?? this.selectedModelId,
     );
   }
 
@@ -62,6 +92,7 @@ class ModelLoaderState extends Equatable {
         cacheSizeBytes,
         lastLoadFromCache,
         modelLoaded,
+        selectedModelId,
       ];
 }
 
@@ -74,6 +105,7 @@ class ModelLoaderCubit extends Cubit<ModelLoaderState> {
 
   Future<void> loadAssetGlb() async {
     await _loadModel(
+      modelId: DemoModelId.avocadoGlb,
       label: 'Avocado (GLB asset)',
       load: () => _controller.loadModelFromAsset(kAssetGlbPath),
     );
@@ -81,6 +113,7 @@ class ModelLoaderCubit extends Cubit<ModelLoaderState> {
 
   Future<void> loadAssetGltf() async {
     await _loadModel(
+      modelId: DemoModelId.boomBoxGltf,
       label: 'BoomBox (glTF asset)',
       load: () => _controller.loadModelFromAsset(kAssetGltfPath),
     );
@@ -90,11 +123,69 @@ class ModelLoaderCubit extends Cubit<ModelLoaderState> {
     final cacheSize = await _controller.getCacheSizeBytes();
     final cached = cacheSize > 0;
     await _loadModel(
+      modelId: DemoModelId.boxTexturedUrl,
       label: cached
           ? 'BoxTextured (URL cache hit)'
           : 'BoxTextured (URL download + cache)',
       load: () => _controller.loadModelFromUrl(kRemoteGlbUrl),
       lastLoadFromCache: cached,
+    );
+  }
+
+  Future<void> loadRemoteBoxAnimated() async {
+    await _loadModel(
+      modelId: DemoModelId.boxAnimatedUrl,
+      label: 'BoxAnimated (URL)',
+      load: () => _controller.loadModelFromUrl(kRemoteBoxAnimatedUrl),
+    );
+  }
+
+  Future<void> loadRemoteClearCoatCarPaint() async {
+    await _loadModel(
+      modelId: DemoModelId.clearCoatCarPaintUrl,
+      label: 'ClearCoatCarPaint (URL)',
+      load: () => _controller.loadModelFromUrl(kRemoteClearCoatCarPaintUrl),
+    );
+  }
+
+  Future<void> loadRemoteDamagedHelmet() async {
+    await _loadModel(
+      modelId: DemoModelId.damagedHelmetUrl,
+      label: 'DamagedHelmet (URL)',
+      load: () => _controller.loadModelFromUrl(kRemoteDamagedHelmetUrl),
+    );
+  }
+
+  Future<void> loadRemoteDirectionalLight() async {
+    await _loadModel(
+      modelId: DemoModelId.directionalLightUrl,
+      label: 'DirectionalLight (URL)',
+      load: () => _controller.loadModelFromUrl(kRemoteDirectionalLightUrl),
+    );
+  }
+
+  Future<void> loadRemoteRiggedFigure() async {
+    await _loadModel(
+      modelId: DemoModelId.riggedFigureUrl,
+      label: 'RiggedFigure (URL)',
+      load: () => _controller.loadModelFromUrl(kRemoteRiggedFigureUrl),
+    );
+  }
+
+  Future<void> loadRemoteMetalRoughSpheres() async {
+    await _loadModel(
+      modelId: DemoModelId.metalRoughSpheresUrl,
+      label: 'MetalRoughSpheres (URL)',
+      load: () => _controller.loadModelFromUrl(kRemoteMetalRoughSpheresUrl),
+    );
+  }
+
+  Future<void> loadLocalFile(String filePath, {String? displayName}) async {
+    final name = displayName ?? filePath.split('/').last;
+    await _loadModel(
+      modelId: DemoModelId.localFile,
+      label: 'Local file ($name)',
+      load: () => _controller.loadModelFromFile(filePath),
     );
   }
 
@@ -128,11 +219,19 @@ class ModelLoaderCubit extends Cubit<ModelLoaderState> {
   }
 
   Future<void> _loadModel({
+    required DemoModelId modelId,
     required String label,
     required Future<void> Function() load,
     bool lastLoadFromCache = false,
   }) async {
-    emit(state.copyWith(isLoading: true, status: 'Loading $label...'));
+    emit(
+      state.copyWith(
+        isLoading: true,
+        status: 'Loading $label...',
+        errorMessage: null,
+        modelLoaded: false,
+      ),
+    );
     try {
       await _ensureViewerReady();
       await _applyEnvironment();
@@ -148,6 +247,7 @@ class ModelLoaderCubit extends Cubit<ModelLoaderState> {
           cacheSizeBytes: cacheSize,
           lastLoadFromCache: lastLoadFromCache,
           modelLoaded: true,
+          selectedModelId: modelId,
         ),
       );
     } catch (e) {
@@ -175,7 +275,7 @@ class ModelLoaderCubit extends Cubit<ModelLoaderState> {
     );
     await _controller.setInertiaEnabled(true);
     await _controller.setInertiaParams(damping: 0.9, sensitivity: 0.2);
-    await _controller.setZoomLimits(minDistance: 0.3, maxDistance: 10.0);
+    await _controller.setZoomLimits(minDistance: 0.02, maxDistance: 10.0);
   }
 
   Future<void> _ensureViewerReady() async {

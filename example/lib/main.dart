@@ -1,3 +1,6 @@
+import 'dart:async';
+
+import 'package:file_picker/file_picker.dart';
 import 'package:filament_widget/filament_widget.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
@@ -103,30 +106,38 @@ class ExampleHome extends StatelessWidget {
             child: LayoutBuilder(
               builder: (context, constraints) {
                 final isWide = constraints.maxWidth > 900;
-                return Padding(
-                  padding: const EdgeInsets.all(16.0),
-                  child: isWide
-                      ? Row(
-                          crossAxisAlignment: CrossAxisAlignment.stretch,
-                          children: [
-                            Expanded(
-                              flex: 3,
-                              child: _ViewerPanel(controller: controller),
-                            ),
-                            const SizedBox(width: 16),
-                            const Expanded(flex: 2, child: _ControlPanel()),
-                          ],
-                        )
-                      : Column(
-                          children: [
-                            Expanded(
-                              flex: 5,
-                              child: _ViewerPanel(controller: controller),
-                            ),
-                            const SizedBox(height: 16),
-                            const Expanded(flex: 4, child: _ControlPanel()),
-                          ],
+                if (isWide) {
+                  return Padding(
+                    padding: const EdgeInsets.all(16.0),
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        Expanded(
+                          flex: 3,
+                          child: _ViewerPanel(controller: controller),
                         ),
+                        const SizedBox(width: 16),
+                        const Expanded(flex: 2, child: _ControlPanel()),
+                      ],
+                    ),
+                  );
+                }
+                return Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Expanded(
+                      flex: 5,
+                      child: _ViewerPanel(controller: controller),
+                    ),
+                    const SizedBox(height: 16),
+                    const Expanded(
+                      flex: 4,
+                      child: Padding(
+                        padding: EdgeInsets.symmetric(horizontal: 16.0),
+                        child: _ControlPanel(),
+                      ),
+                    ),
+                  ],
                 );
               },
             ),
@@ -208,6 +219,51 @@ class _ModelSection extends StatelessWidget {
           final statusColor = state.errorMessage != null
               ? Colors.redAccent
               : const Color(0xFF1A1A1A);
+          Widget modelButton({
+            required DemoModelId id,
+            required IconData icon,
+            required String label,
+            required VoidCallback onPressed,
+          }) {
+            final isSelected = state.selectedModelId == id;
+            final effectiveOnPressed = state.isLoading ? null : onPressed;
+            final buttonIcon = Icon(isSelected ? Icons.check_circle : icon);
+            if (isSelected) {
+              return FilledButton.icon(
+                onPressed: effectiveOnPressed,
+                icon: buttonIcon,
+                label: Text(label),
+              );
+            }
+            return OutlinedButton.icon(
+              onPressed: effectiveOnPressed,
+              icon: buttonIcon,
+              label: Text(label),
+            );
+          }
+
+          Future<void> pickLocalModel() async {
+            final result = await FilePicker.platform.pickFiles(
+              type: FileType.custom,
+              allowedExtensions: const ['glb', 'gltf'],
+            );
+            if (result == null || result.files.isEmpty) {
+              return;
+            }
+            final file = result.files.first;
+            final path = file.path;
+            if (path == null || path.isEmpty) {
+              if (context.mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                      content: Text('Unable to access selected file.')),
+                );
+              }
+              return;
+            }
+            await cubit.loadLocalFile(path, displayName: file.name);
+          }
+
           return Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -231,20 +287,65 @@ class _ModelSection extends StatelessWidget {
                 spacing: 12,
                 runSpacing: 8,
                 children: [
-                  FilledButton.icon(
-                    onPressed: state.isLoading ? null : cubit.loadAssetGlb,
-                    icon: const Icon(Icons.inventory_2),
-                    label: const Text('Load Avocado (GLB)'),
+                  modelButton(
+                    id: DemoModelId.avocadoGlb,
+                    icon: Icons.inventory_2,
+                    label: 'Load Avocado (GLB)',
+                    onPressed: cubit.loadAssetGlb,
                   ),
-                  OutlinedButton.icon(
-                    onPressed: state.isLoading ? null : cubit.loadAssetGltf,
-                    icon: const Icon(Icons.music_note),
-                    label: const Text('Load BoomBox (glTF)'),
+                  modelButton(
+                    id: DemoModelId.boomBoxGltf,
+                    icon: Icons.music_note,
+                    label: 'Load BoomBox (glTF)',
+                    onPressed: cubit.loadAssetGltf,
                   ),
-                  FilledButton.icon(
-                    onPressed: state.isLoading ? null : cubit.loadRemoteGlb,
-                    icon: const Icon(Icons.cloud_download),
-                    label: const Text('Load BoxTextured URL'),
+                  modelButton(
+                    id: DemoModelId.boxTexturedUrl,
+                    icon: Icons.cloud_download,
+                    label: 'Load BoxTextured URL',
+                    onPressed: cubit.loadRemoteGlb,
+                  ),
+                  modelButton(
+                    id: DemoModelId.boxAnimatedUrl,
+                    icon: Icons.cloud_queue,
+                    label: 'Load BoxAnimated URL',
+                    onPressed: cubit.loadRemoteBoxAnimated,
+                  ),
+                  modelButton(
+                    id: DemoModelId.clearCoatCarPaintUrl,
+                    icon: Icons.cloud_queue,
+                    label: 'Load ClearCoatCarPaint URL',
+                    onPressed: cubit.loadRemoteClearCoatCarPaint,
+                  ),
+                  modelButton(
+                    id: DemoModelId.damagedHelmetUrl,
+                    icon: Icons.cloud_queue,
+                    label: 'Load DamagedHelmet URL',
+                    onPressed: cubit.loadRemoteDamagedHelmet,
+                  ),
+                  modelButton(
+                    id: DemoModelId.directionalLightUrl,
+                    icon: Icons.cloud_queue,
+                    label: 'Load DirectionalLight URL',
+                    onPressed: cubit.loadRemoteDirectionalLight,
+                  ),
+                  modelButton(
+                    id: DemoModelId.riggedFigureUrl,
+                    icon: Icons.cloud_queue,
+                    label: 'Load RiggedFigure URL',
+                    onPressed: cubit.loadRemoteRiggedFigure,
+                  ),
+                  modelButton(
+                    id: DemoModelId.metalRoughSpheresUrl,
+                    icon: Icons.cloud_queue,
+                    label: 'Load MetalRoughSpheres URL',
+                    onPressed: cubit.loadRemoteMetalRoughSpheres,
+                  ),
+                  modelButton(
+                    id: DemoModelId.localFile,
+                    icon: Icons.folder_open,
+                    label: 'Load Local Model',
+                    onPressed: () => unawaited(pickLocalModel()),
                   ),
                 ],
               ),
@@ -358,6 +459,11 @@ class _SettingsSection extends StatelessWidget {
                 title: const Text('Shadows'),
                 value: state.shadowsEnabled,
                 onChanged: cubit.setShadowsEnabled,
+              ),
+              SwitchListTile.adaptive(
+                title: const Text('Environment (Skybox)'),
+                value: state.environmentEnabled,
+                onChanged: cubit.setEnvironmentEnabled,
               ),
               SwitchListTile.adaptive(
                 title: const Text('Wireframe'),

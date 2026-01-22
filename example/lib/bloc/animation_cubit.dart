@@ -72,15 +72,19 @@ class AnimationCubit extends Cubit<AnimationState> {
 
   Future<void> loadAnimations() async {
     final count = await _controller.getAnimationCount();
+    final safeIndex =
+        count == 0 ? 0 : state.selectedIndex.clamp(0, count - 1).toInt();
     double duration = 0.0;
     if (count > 0) {
-      duration = await _controller.getAnimationDuration(0);
+      duration = await _controller.getAnimationDuration(safeIndex);
+      await _controller.seekAnimation(0.0);
+      await _controller.setAnimationSpeed(state.speed);
     }
     _stopTicker();
     emit(
       state.copyWith(
         animationCount: count,
-        selectedIndex: 0,
+        selectedIndex: safeIndex,
         durationSeconds: duration,
         positionSeconds: 0.0,
         isPlaying: false,
