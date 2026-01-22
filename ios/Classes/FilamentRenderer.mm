@@ -7,6 +7,7 @@
 #include <backend/BufferDescriptor.h>
 #include <algorithm>
 #include <cmath>
+#include <functional>
 #include <filament/Camera.h>
 #include <filament/Box.h>
 #include <filament/ColorGrading.h>
@@ -41,6 +42,7 @@
 #include <utils/EntityManager.h>
 #include <unordered_set>
 #include <string>
+#include <vector>
 
 using namespace filament;
 using namespace filament::gltfio;
@@ -48,6 +50,7 @@ using namespace utils;
 
 @interface FilamentRenderer ()
 - (void)applyResourcePath;
+- (void)resetResourceLoader;
 @end
 
 namespace {
@@ -86,6 +89,387 @@ void EnsureJobSystemAdopted(Engine* engine) {
         engine->getJobSystem().adopt();
         adopted = true;
     }
+}
+
+struct Matrix4 {
+    double m[16];
+};
+
+Matrix4 IdentityMatrix() {
+    Matrix4 out{};
+    out.m[0] = 1.0;
+    out.m[5] = 1.0;
+    out.m[10] = 1.0;
+    out.m[15] = 1.0;
+    return out;
+}
+
+Matrix4 MultiplyMatrix(const Matrix4& a, const Matrix4& b) {
+    Matrix4 out{};
+    for (int c = 0; c < 4; ++c) {
+        const int col = c * 4;
+        const double b0 = b.m[col];
+        const double b1 = b.m[col + 1];
+        const double b2 = b.m[col + 2];
+        const double b3 = b.m[col + 3];
+        out.m[col] = a.m[0] * b0 + a.m[4] * b1 + a.m[8] * b2 + a.m[12] * b3;
+        out.m[col + 1] = a.m[1] * b0 + a.m[5] * b1 + a.m[9] * b2 + a.m[13] * b3;
+        out.m[col + 2] = a.m[2] * b0 + a.m[6] * b1 + a.m[10] * b2 + a.m[14] * b3;
+        out.m[col + 3] = a.m[3] * b0 + a.m[7] * b1 + a.m[11] * b2 + a.m[15] * b3;
+    }
+    return out;
+}
+
+Matrix4 TranslationMatrix(double tx, double ty, double tz) {
+    Matrix4 out = IdentityMatrix();
+    out.m[12] = tx;
+    out.m[13] = ty;
+    out.m[14] = tz;
+    return out;
+}
+
+Matrix4 ScaleMatrix(double sx, double sy, double sz) {
+    Matrix4 out = IdentityMatrix();
+    out.m[0] = sx;
+    out.m[5] = sy;
+    out.m[10] = sz;
+    return out;
+}
+
+Matrix4 RotationMatrix(double qx, double qy, double qz, double qw) {
+    const double xx = qx * qx;
+    const double yy = qy * qy;
+    const double zz = qz * qz;
+    const double xy = qx * qy;
+    const double xz = qx * qz;
+    const double yz = qy * qz;
+    const double wx = qw * qx;
+    const double wy = qw * qy;
+    const double wz = qw * qz;
+    const double m00 = 1.0 - 2.0 * (yy + zz);
+    const double m01 = 2.0 * (xy - wz);
+    const double m02 = 2.0 * (xz + wy);
+    const double m10 = 2.0 * (xy + wz);
+    const double m11 = 1.0 - 2.0 * (xx + zz);
+    const double m12 = 2.0 * (yz - wx);
+    const double m20 = 2.0 * (xz - wy);
+    const double m21 = 2.0 * (yz + wx);
+    const double m22 = 1.0 - 2.0 * (xx + yy);
+    Matrix4 out{};
+    out.m[0] = m00;
+    out.m[1] = m10;
+    out.m[2] = m20;
+    out.m[4] = m01;
+    out.m[5] = m11;
+    out.m[6] = m21;
+    out.m[8] = m02;
+    out.m[9] = m12;
+    out.m[10] = m22;
+    out.m[15] = 1.0;
+    return out;
+}
+
+math::float3 TransformPosition(const Matrix4& matrix, float x, float y, float z) {
+    const double tx = matrix.m[0] * x + matrix.m[4] * y + matrix.m[8] * z + matrix.m[12];
+    const double ty = matrix.m[1] * x + matrix.m[5] * y + matrix.m[9] * z + matrix.m[13];
+    const double tz = matrix.m[2] * x + matrix.m[6] * y + matrix.m[10] * z + matrix.m[14];
+    return math::float3{(float)tx, (float)ty, (float)tz};
+}
+
+int ToInt(id value, int fallback) {
+    return [value isKindOfClass:[NSNumber class]] ? [(NSNumber *)value intValue] : fallback;
+}
+
+double ToDouble(id value, double fallback) {
+    return [value isKindOfClass:[NSNumber class]] ? [(NSNumber *)value doubleValue] : fallback;
+}
+
+NSDictionary* ParseGltfJson(NSData* data, NSData** outBinChunk) {
+    if (outBinChunk) {
+        *outBinChunk = nil;
+    }
+    if (data.length >= 12) {
+        const uint8_t* bytes = (const uint8_t*)data.bytes;
+        const uint32_t magic = bytes[0] | (bytes[1] << 8) | (bytes[2] << 16) | (bytes[3] << 24);
+        if (magic == 0x46546C67) {
+            const uint32_t length = bytes[8] | (bytes[9] << 8) | (bytes[10] << 16) | (bytes[11] << 24);
+            if (length > data.length || length < 12) {
+                return nil;
+            }
+            size_t offset = 12;
+            NSData* jsonChunk = nil;
+            NSData* binChunk = nil;
+            while (offset + 8 <= data.length) {
+                const uint32_t chunkLength =
+                    bytes[offset] | (bytes[offset + 1] << 8) | (bytes[offset + 2] << 16) | (bytes[offset + 3] << 24);
+                const uint32_t chunkType =
+                    bytes[offset + 4] | (bytes[offset + 5] << 8) | (bytes[offset + 6] << 16) | (bytes[offset + 7] << 24);
+                offset += 8;
+                if (offset + chunkLength > data.length) {
+                    return nil;
+                }
+                NSData* chunkData = [data subdataWithRange:NSMakeRange(offset, chunkLength)];
+                if (chunkType == 0x4E4F534A) {
+                    jsonChunk = chunkData;
+                } else if (chunkType == 0x004E4942) {
+                    binChunk = chunkData;
+                }
+                offset += chunkLength;
+            }
+            if (!jsonChunk) {
+                return nil;
+            }
+            NSDictionary* json = [NSJSONSerialization JSONObjectWithData:jsonChunk options:0 error:nil];
+            if (outBinChunk) {
+                *outBinChunk = binChunk;
+            }
+            return [json isKindOfClass:[NSDictionary class]] ? json : nil;
+        }
+    }
+    NSDictionary* json = [NSJSONSerialization JSONObjectWithData:data options:0 error:nil];
+    return [json isKindOfClass:[NSDictionary class]] ? json : nil;
+}
+
+NSData* DecodeDataUri(NSString* uri) {
+    NSRange comma = [uri rangeOfString:@","];
+    if (comma.location == NSNotFound) {
+        return nil;
+    }
+    NSString* meta = [uri substringWithRange:NSMakeRange(5, comma.location - 5)];
+    NSString* dataPart = [uri substringFromIndex:comma.location + 1];
+    if ([meta hasSuffix:@";base64"]) {
+        return [[NSData alloc] initWithBase64EncodedString:dataPart options:0];
+    }
+    NSString* decoded = [dataPart stringByRemovingPercentEncoding] ?: dataPart;
+    return [decoded dataUsingEncoding:NSUTF8StringEncoding];
+}
+
+NSData* ResolveResourceData(
+    NSString* uri,
+    NSDictionary<NSString*, NSData*>* resources,
+    NSData* embeddedBin,
+    NSString* basePath) {
+    if (!uri) {
+        return embeddedBin;
+    }
+    if ([uri hasPrefix:@"data:"]) {
+        return DecodeDataUri(uri);
+    }
+    NSData* data = resources[uri];
+    if (!data) {
+        NSString* decoded = [uri stringByRemovingPercentEncoding];
+        if (decoded) {
+            data = resources[decoded];
+        }
+    }
+    if (!data && [uri hasPrefix:@"./"]) {
+        NSString* trimmed = [uri substringFromIndex:2];
+        data = resources[trimmed];
+    }
+    if (!data) {
+        NSString* last = uri.lastPathComponent;
+        data = resources[last];
+    }
+    if (!data && basePath.length > 0) {
+        NSString* candidate = uri;
+        if ([candidate hasPrefix:@"/"]) {
+            data = [NSData dataWithContentsOfFile:candidate];
+        } else {
+            data = [NSData dataWithContentsOfFile:[basePath stringByAppendingPathComponent:candidate]];
+        }
+        if (!data) {
+            NSString* decoded = [uri stringByRemovingPercentEncoding];
+            if (decoded && ![decoded isEqualToString:uri]) {
+                if ([decoded hasPrefix:@"/"]) {
+                    data = [NSData dataWithContentsOfFile:decoded];
+                } else {
+                    data = [NSData dataWithContentsOfFile:[basePath stringByAppendingPathComponent:decoded]];
+                }
+            }
+        }
+        if (!data && [uri hasPrefix:@"./"] && uri.length > 2) {
+            NSString* trimmed = [uri substringFromIndex:2];
+            data = [NSData dataWithContentsOfFile:[basePath stringByAppendingPathComponent:trimmed]];
+        }
+        if (!data) {
+            NSString* last = uri.lastPathComponent;
+            data = [NSData dataWithContentsOfFile:[basePath stringByAppendingPathComponent:last]];
+        }
+    }
+    return data ?: embeddedBin;
+}
+
+struct BufferViewInfo {
+    int buffer;
+    size_t byteOffset;
+    size_t byteLength;
+    size_t byteStride;
+};
+
+struct AccessorInfo {
+    int bufferView;
+    size_t byteOffset;
+    int componentType;
+    size_t count;
+    std::string type;
+    bool hasSparse;
+};
+
+bool ReadAccessorVec3(
+    const AccessorInfo& accessor,
+    const std::vector<BufferViewInfo>& views,
+    const std::vector<NSData*>& buffers,
+    std::vector<float>& out) {
+    if (accessor.bufferView < 0 || accessor.componentType != 5126 || accessor.type != "VEC3" || accessor.hasSparse) {
+        return false;
+    }
+    if (accessor.bufferView >= (int)views.size()) {
+        return false;
+    }
+    const BufferViewInfo& view = views[accessor.bufferView];
+    if (view.buffer < 0 || view.buffer >= (int)buffers.size()) {
+        return false;
+    }
+    NSData* data = buffers[view.buffer];
+    if (!data) {
+        return false;
+    }
+    const uint8_t* bytes = (const uint8_t*)data.bytes;
+    const size_t length = data.length;
+    const size_t stride = view.byteStride > 0 ? view.byteStride : sizeof(float) * 3;
+    const size_t offset = view.byteOffset + accessor.byteOffset;
+    if (offset + stride * std::max<size_t>(0, accessor.count - 1) + sizeof(float) * 3 > length) {
+        return false;
+    }
+    out.resize(accessor.count * 3);
+    size_t cursor = offset;
+    size_t outIndex = 0;
+    for (size_t i = 0; i < accessor.count; ++i) {
+        float x = 0.0f;
+        float y = 0.0f;
+        float z = 0.0f;
+        memcpy(&x, bytes + cursor, sizeof(float));
+        memcpy(&y, bytes + cursor + sizeof(float), sizeof(float));
+        memcpy(&z, bytes + cursor + sizeof(float) * 2, sizeof(float));
+        out[outIndex++] = x;
+        out[outIndex++] = y;
+        out[outIndex++] = z;
+        cursor += stride;
+    }
+    return true;
+}
+
+bool ReadAccessorIndices(
+    const AccessorInfo& accessor,
+    const std::vector<BufferViewInfo>& views,
+    const std::vector<NSData*>& buffers,
+    std::vector<uint32_t>& out) {
+    if (accessor.bufferView < 0 || accessor.type != "SCALAR" || accessor.hasSparse) {
+        return false;
+    }
+    if (accessor.bufferView >= (int)views.size()) {
+        return false;
+    }
+    const BufferViewInfo& view = views[accessor.bufferView];
+    if (view.buffer < 0 || view.buffer >= (int)buffers.size()) {
+        return false;
+    }
+    NSData* data = buffers[view.buffer];
+    if (!data) {
+        return false;
+    }
+    const uint8_t* bytes = (const uint8_t*)data.bytes;
+    const size_t length = data.length;
+    size_t componentSize = 0;
+    switch (accessor.componentType) {
+        case 5121:
+            componentSize = 1;
+            break;
+        case 5123:
+            componentSize = 2;
+            break;
+        case 5125:
+            componentSize = 4;
+            break;
+        default:
+            return false;
+    }
+    const size_t stride = view.byteStride > 0 ? view.byteStride : componentSize;
+    const size_t offset = view.byteOffset + accessor.byteOffset;
+    if (offset + stride * std::max<size_t>(0, accessor.count - 1) + componentSize > length) {
+        return false;
+    }
+    out.resize(accessor.count);
+    size_t cursor = offset;
+    for (size_t i = 0; i < accessor.count; ++i) {
+        uint32_t value = 0;
+        if (componentSize == 1) {
+            value = bytes[cursor];
+        } else if (componentSize == 2) {
+            uint16_t tmp = 0;
+            memcpy(&tmp, bytes + cursor, sizeof(uint16_t));
+            value = tmp;
+        } else {
+            uint32_t tmp = 0;
+            memcpy(&tmp, bytes + cursor, sizeof(uint32_t));
+            value = tmp;
+        }
+        out[i] = value;
+        cursor += stride;
+    }
+    return true;
+}
+
+std::vector<uint32_t> BuildWireframeEdges(const std::vector<uint32_t>& indices, int mode) {
+    std::vector<uint32_t> edges;
+    if (indices.size() < 3) {
+        return edges;
+    }
+    std::unordered_set<uint64_t> seen;
+    auto addEdge = [&](uint32_t a, uint32_t b) {
+        const uint32_t minIndex = std::min(a, b);
+        const uint32_t maxIndex = std::max(a, b);
+        const uint64_t key = (uint64_t(minIndex) << 32) | maxIndex;
+        if (seen.insert(key).second) {
+            edges.push_back(a);
+            edges.push_back(b);
+        }
+    };
+    if (mode == 4) {
+        const size_t triCount = indices.size() / 3;
+        for (size_t i = 0; i < triCount; ++i) {
+            const size_t base = i * 3;
+            const uint32_t a = indices[base];
+            const uint32_t b = indices[base + 1];
+            const uint32_t c = indices[base + 2];
+            addEdge(a, b);
+            addEdge(b, c);
+            addEdge(c, a);
+        }
+    } else if (mode == 5) {
+        for (size_t i = 0; i + 2 < indices.size(); ++i) {
+            uint32_t a = indices[i];
+            uint32_t b = indices[i + 1];
+            uint32_t c = indices[i + 2];
+            if (i % 2 == 1) {
+                std::swap(b, c);
+            }
+            addEdge(a, b);
+            addEdge(b, c);
+            addEdge(c, a);
+        }
+    } else if (mode == 6) {
+        const uint32_t first = indices[0];
+        for (size_t i = 1; i + 1 < indices.size(); ++i) {
+            const uint32_t a = first;
+            const uint32_t b = indices[i];
+            const uint32_t c = indices[i + 1];
+            addEdge(a, b);
+            addEdge(b, c);
+            addEdge(c, a);
+        }
+    }
+    return edges;
 }
 }  // namespace
 
@@ -136,8 +520,11 @@ void EnsureJobSystemAdopted(Engine* engine) {
     ColorGrading* _colorGrading;
     int _msaaSamples;
     bool _dynamicResolutionEnabled;
+    bool _environmentEnabled;
     Material* _debugLineMaterial;
     MaterialInstance* _wireframeMaterialInstance;
+    VertexBuffer* _wireframeVertexBuffer;
+    IndexBuffer* _wireframeIndexBuffer;
     MaterialInstance* _boundsMaterialInstance;
     VertexBuffer* _boundsVertexBuffer;
     IndexBuffer* _boundsIndexBuffer;
@@ -145,6 +532,9 @@ void EnsureJobSystemAdopted(Engine* engine) {
     Entity _boundsEntity;
     bool _wireframeEnabled;
     bool _boundingBoxesEnabled;
+    bool _hasWireframeData;
+    std::vector<float> _wireframePositions;
+    std::vector<uint32_t> _wireframeIndices;
     bool _debugLoggingEnabled;
     FilamentFpsCallback _fpsCallback;
     FilamentFrameCallback _frameCallback;
@@ -221,8 +611,11 @@ void EnsureJobSystemAdopted(Engine* engine) {
         _colorGrading = nullptr;
         _msaaSamples = 2;
         _dynamicResolutionEnabled = true;
+        _environmentEnabled = true;
         _debugLineMaterial = nullptr;
         _wireframeMaterialInstance = nullptr;
+        _wireframeVertexBuffer = nullptr;
+        _wireframeIndexBuffer = nullptr;
         _boundsMaterialInstance = nullptr;
         _boundsVertexBuffer = nullptr;
         _boundsIndexBuffer = nullptr;
@@ -230,6 +623,7 @@ void EnsureJobSystemAdopted(Engine* engine) {
         _boundsEntity = {};
         _wireframeEnabled = false;
         _boundingBoxesEnabled = false;
+        _hasWireframeData = false;
         _debugLoggingEnabled = false;
         _fpsCallback = nil;
         _frameCallback = nil;
@@ -291,6 +685,7 @@ void EnsureJobSystemAdopted(Engine* engine) {
 - (NSArray<NSString *> *)beginModelLoad:(NSData *)data {
     EnsureJobSystemAdopted(_engine);
     [self clearSceneInternal];
+    [self resetResourceLoader];
     if (_assetLoader == nullptr) {
         return @[];
     }
@@ -376,13 +771,13 @@ void EnsureJobSystemAdopted(Engine* engine) {
         _resourceLoader->evictResourceData();
         return NO;
     }
+    [self buildWireframeData:resources];
     _engine->flushAndWait();
     _pendingAsset->releaseSourceData();
     _pendingSourceData = nil;
     _scene->addEntities(_pendingAsset->getEntities(), _pendingAsset->getEntityCount());
     _asset = _pendingAsset;
     _pendingAsset = nullptr;
-    _resourceLoader->evictResourceData();
     [self updateBoundsFromAsset];
     FilamentInstance* instance = _asset ? _asset->getInstance() : nullptr;
     _animator = instance ? instance->getAnimator() : nullptr;
@@ -438,7 +833,7 @@ void EnsureJobSystemAdopted(Engine* engine) {
     auto* bundle = new image::Ktx1Bundle(bytes, (uint32_t)data.length);
     _skyboxTexture = ktxreader::Ktx1Reader::createTexture(_engine, bundle, true);
     _skybox = Skybox::Builder().environment(_skyboxTexture).build(*_engine);
-    _scene->setSkybox(_skybox);
+    _scene->setSkybox(_environmentEnabled ? _skybox : nullptr);
 }
 
 - (void)frameModel:(BOOL)useWorldOrigin {
@@ -493,7 +888,7 @@ void EnsureJobSystemAdopted(Engine* engine) {
 
 - (void)orbitDeltaWithDx:(double)dx dy:(double)dy {
     EnsureJobSystemAdopted(_engine);
-    _yawDeg += dx * _sensitivity;
+    _yawDeg -= dx * _sensitivity;
     _pitchDeg += dy * _sensitivity;
     [self clampAngles];
 }
@@ -505,7 +900,7 @@ void EnsureJobSystemAdopted(Engine* engine) {
         _velocityPitch = 0.0;
         return;
     }
-    _velocityYaw = velocityX * _sensitivity;
+    _velocityYaw = -velocityX * _sensitivity;
     _velocityPitch = velocityY * _sensitivity;
 }
 
@@ -576,6 +971,15 @@ void EnsureJobSystemAdopted(Engine* engine) {
     options.maxScale = 1.0f;
     options.sharpness = 0.9f;
     _view->setDynamicResolutionOptions(options);
+}
+
+- (void)setEnvironmentEnabled:(BOOL)enabled {
+    EnsureJobSystemAdopted(_engine);
+    _environmentEnabled = enabled;
+    if (!_scene) {
+        return;
+    }
+    _scene->setSkybox(enabled ? _skybox : nullptr);
 }
 
 - (void)setToneMappingFilmic {
@@ -757,6 +1161,10 @@ void EnsureJobSystemAdopted(Engine* engine) {
         _engine->destroy(_colorGrading);
         _colorGrading = nullptr;
     }
+    [self destroyWireframeRenderable];
+    _wireframePositions.clear();
+    _wireframeIndices.clear();
+    _hasWireframeData = false;
     if (_wireframeMaterialInstance) {
         _engine->destroy(_wireframeMaterialInstance);
         _wireframeMaterialInstance = nullptr;
@@ -852,6 +1260,24 @@ void EnsureJobSystemAdopted(Engine* engine) {
     _resourceLoader->setConfiguration(resourceConfig);
 }
 
+- (void)resetResourceLoader {
+    if (_resourceLoader != nullptr) {
+        _resourceLoader->evictResourceData();
+        delete _resourceLoader;
+        _resourceLoader = nullptr;
+    }
+    ResourceConfiguration resourceConfig;
+    resourceConfig.engine = _engine;
+    resourceConfig.gltfPath = _resourceRoot.empty() ? nullptr : _resourceRoot.c_str();
+    resourceConfig.normalizeSkinningWeights = true;
+    _resourceLoader = new ResourceLoader(resourceConfig);
+    if (_textureProvider == nullptr) {
+        _textureProvider = createStbProvider(_engine);
+    }
+    _resourceLoader->addTextureProvider("image/png", _textureProvider);
+    _resourceLoader->addTextureProvider("image/jpeg", _textureProvider);
+}
+
 - (void)updateSwapChain:(CVPixelBufferRef)pixelBuffer
                   width:(int)width
                  height:(int)height {
@@ -884,10 +1310,10 @@ void EnsureJobSystemAdopted(Engine* engine) {
         _pendingAsset = nullptr;
     }
     _pendingSourceData = nil;
-    if (_scene && _wireframeEntity) {
-        _scene->remove(_wireframeEntity);
-        _wireframeEntity.clear();
-    }
+    [self destroyWireframeRenderable];
+    _wireframePositions.clear();
+    _wireframeIndices.clear();
+    _hasWireframeData = false;
     [self destroyBoundsRenderable];
     _animator = nullptr;
     _animationPlaying = false;
@@ -1018,15 +1444,311 @@ void EnsureJobSystemAdopted(Engine* engine) {
     return _debugLineMaterial;
 }
 
+- (void)buildWireframeData:(NSDictionary<NSString *, NSData *> *)resources {
+    _wireframePositions.clear();
+    _wireframeIndices.clear();
+    _hasWireframeData = false;
+    if (!_pendingSourceData) {
+        return;
+    }
+    NSData* binChunk = nil;
+    NSDictionary* json = ParseGltfJson(_pendingSourceData, &binChunk);
+    if (!json) {
+        return;
+    }
+    NSArray* buffersJson = json[@"buffers"];
+    NSArray* bufferViewsJson = json[@"bufferViews"];
+    NSArray* accessorsJson = json[@"accessors"];
+    NSArray* meshesJson = json[@"meshes"];
+    if (![buffersJson isKindOfClass:[NSArray class]] ||
+        ![bufferViewsJson isKindOfClass:[NSArray class]] ||
+        ![accessorsJson isKindOfClass:[NSArray class]] ||
+        ![meshesJson isKindOfClass:[NSArray class]]) {
+        return;
+    }
+    NSMutableDictionary<NSString*, NSData*>* resourceMap =
+        resources ? [resources mutableCopy] : [NSMutableDictionary dictionary];
+    for (NSString* key in resources) {
+        NSData* data = resources[key];
+        if (key.length == 0 || data.length == 0) {
+            continue;
+        }
+        NSString* decoded = [key stringByRemovingPercentEncoding];
+        if (decoded && ![decoded isEqualToString:key]) {
+            resourceMap[decoded] = data;
+        }
+        if ([key hasPrefix:@"./"] && key.length > 2) {
+            NSString* trimmed = [key substringFromIndex:2];
+            resourceMap[trimmed] = data;
+        }
+        NSString* last = key.lastPathComponent;
+        if (last.length > 0 && ![last isEqualToString:key]) {
+            resourceMap[last] = data;
+        }
+    }
+    NSString* basePath = nil;
+    if (!_resourceRoot.empty()) {
+        NSString* rootPath = [NSString stringWithUTF8String:_resourceRoot.c_str()];
+        if (rootPath.length > 0) {
+            basePath = [rootPath stringByDeletingLastPathComponent];
+        }
+    }
+    std::vector<NSData*> buffers;
+    buffers.reserve(buffersJson.count);
+    for (id entry in buffersJson) {
+        if (![entry isKindOfClass:[NSDictionary class]]) {
+            return;
+        }
+        NSDictionary* buffer = (NSDictionary*)entry;
+        NSString* uri = [buffer[@"uri"] isKindOfClass:[NSString class]] ? buffer[@"uri"] : nil;
+        NSData* data = ResolveResourceData(uri, resourceMap, binChunk, basePath);
+        if (!data) {
+            return;
+        }
+        buffers.push_back(data);
+    }
+    std::vector<BufferViewInfo> views;
+    views.reserve(bufferViewsJson.count);
+    for (id entry in bufferViewsJson) {
+        if (![entry isKindOfClass:[NSDictionary class]]) {
+            continue;
+        }
+        NSDictionary* view = (NSDictionary*)entry;
+        BufferViewInfo info{};
+        info.buffer = ToInt(view[@"buffer"], -1);
+        info.byteOffset = (size_t)ToInt(view[@"byteOffset"], 0);
+        info.byteLength = (size_t)ToInt(view[@"byteLength"], 0);
+        info.byteStride = (size_t)ToInt(view[@"byteStride"], 0);
+        views.push_back(info);
+    }
+    std::vector<AccessorInfo> accessors;
+    accessors.reserve(accessorsJson.count);
+    for (id entry in accessorsJson) {
+        if (![entry isKindOfClass:[NSDictionary class]]) {
+            continue;
+        }
+        NSDictionary* accessor = (NSDictionary*)entry;
+        AccessorInfo info{};
+        info.bufferView = ToInt(accessor[@"bufferView"], -1);
+        info.byteOffset = (size_t)ToInt(accessor[@"byteOffset"], 0);
+        info.componentType = ToInt(accessor[@"componentType"], -1);
+        info.count = (size_t)ToInt(accessor[@"count"], 0);
+        info.hasSparse = accessor[@"sparse"] != nil;
+        NSString* type = [accessor[@"type"] isKindOfClass:[NSString class]] ? accessor[@"type"] : @"";
+        info.type = type.UTF8String ? type.UTF8String : "";
+        accessors.push_back(info);
+    }
+    NSArray* nodesJson = [json[@"nodes"] isKindOfClass:[NSArray class]] ? json[@"nodes"] : @[];
+    const size_t nodeCount = nodesJson.count;
+    std::vector<Matrix4> local(nodeCount, IdentityMatrix());
+    std::vector<std::vector<int>> children(nodeCount);
+    std::vector<bool> hasParent(nodeCount, false);
+    for (size_t i = 0; i < nodeCount; ++i) {
+        NSDictionary* node = [nodesJson[i] isKindOfClass:[NSDictionary class]] ? nodesJson[i] : nil;
+        if (!node) {
+            continue;
+        }
+        NSArray* matrixArray = [node[@"matrix"] isKindOfClass:[NSArray class]] ? node[@"matrix"] : nil;
+        if (matrixArray && matrixArray.count == 16) {
+            Matrix4 mat{};
+            for (int m = 0; m < 16; ++m) {
+                mat.m[m] = ToDouble(matrixArray[m], (m % 5 == 0) ? 1.0 : 0.0);
+            }
+            local[i] = mat;
+        } else {
+            NSArray* t = [node[@"translation"] isKindOfClass:[NSArray class]] ? node[@"translation"] : nil;
+            NSArray* r = [node[@"rotation"] isKindOfClass:[NSArray class]] ? node[@"rotation"] : nil;
+            NSArray* s = [node[@"scale"] isKindOfClass:[NSArray class]] ? node[@"scale"] : nil;
+            const double tx = t ? ToDouble(t[0], 0.0) : 0.0;
+            const double ty = t ? ToDouble(t[1], 0.0) : 0.0;
+            const double tz = t ? ToDouble(t[2], 0.0) : 0.0;
+            const double qx = r ? ToDouble(r[0], 0.0) : 0.0;
+            const double qy = r ? ToDouble(r[1], 0.0) : 0.0;
+            const double qz = r ? ToDouble(r[2], 0.0) : 0.0;
+            const double qw = r ? ToDouble(r[3], 1.0) : 1.0;
+            const double sx = s ? ToDouble(s[0], 1.0) : 1.0;
+            const double sy = s ? ToDouble(s[1], 1.0) : 1.0;
+            const double sz = s ? ToDouble(s[2], 1.0) : 1.0;
+            Matrix4 mat = MultiplyMatrix(
+                TranslationMatrix(tx, ty, tz),
+                MultiplyMatrix(RotationMatrix(qx, qy, qz, qw), ScaleMatrix(sx, sy, sz))
+            );
+            local[i] = mat;
+        }
+        NSArray* childrenArray = [node[@"children"] isKindOfClass:[NSArray class]] ? node[@"children"] : nil;
+        if (childrenArray) {
+            std::vector<int> list;
+            list.reserve(childrenArray.count);
+            for (id childValue in childrenArray) {
+                const int childIndex = ToInt(childValue, -1);
+                list.push_back(childIndex);
+                if (childIndex >= 0 && childIndex < (int)nodeCount) {
+                    hasParent[childIndex] = true;
+                }
+            }
+            children[i] = list;
+        }
+    }
+    std::vector<Matrix4> world(nodeCount, IdentityMatrix());
+    std::vector<int> roots;
+    NSArray* scenesJson = [json[@"scenes"] isKindOfClass:[NSArray class]] ? json[@"scenes"] : nil;
+    const int sceneIndex = ToInt(json[@"scene"], 0);
+    if (scenesJson && scenesJson.count > 0) {
+        NSDictionary* scene = [scenesJson[std::max(0, std::min(sceneIndex, (int)scenesJson.count - 1))] isKindOfClass:[NSDictionary class]]
+            ? scenesJson[std::max(0, std::min(sceneIndex, (int)scenesJson.count - 1))]
+            : nil;
+        NSArray* sceneNodes = [scene[@"nodes"] isKindOfClass:[NSArray class]] ? scene[@"nodes"] : nil;
+        if (sceneNodes) {
+            for (id nodeValue in sceneNodes) {
+                const int nodeIndex = ToInt(nodeValue, -1);
+                if (nodeIndex >= 0 && nodeIndex < (int)nodeCount) {
+                    roots.push_back(nodeIndex);
+                }
+            }
+        }
+    }
+    if (roots.empty()) {
+        for (size_t i = 0; i < nodeCount; ++i) {
+            if (!hasParent[i]) {
+                roots.push_back((int)i);
+            }
+        }
+    }
+    if (roots.empty()) {
+        roots.push_back(0);
+    }
+    std::function<void(int, const Matrix4&)> walk = [&](int index, const Matrix4& parent) {
+        if (index < 0 || index >= (int)nodeCount) {
+            return;
+        }
+        Matrix4 worldMatrix = MultiplyMatrix(parent, local[index]);
+        world[index] = worldMatrix;
+        for (int child : children[index]) {
+            walk(child, worldMatrix);
+        }
+    };
+    Matrix4 identity = IdentityMatrix();
+    for (int root : roots) {
+        walk(root, identity);
+    }
+    for (size_t nodeIndex = 0; nodeIndex < nodeCount; ++nodeIndex) {
+        NSDictionary* node = [nodesJson[nodeIndex] isKindOfClass:[NSDictionary class]] ? nodesJson[nodeIndex] : nil;
+        if (!node) {
+            continue;
+        }
+        const int meshIndex = ToInt(node[@"mesh"], -1);
+        if (meshIndex < 0 || meshIndex >= (int)meshesJson.count) {
+            continue;
+        }
+        NSDictionary* mesh = [meshesJson[meshIndex] isKindOfClass:[NSDictionary class]] ? meshesJson[meshIndex] : nil;
+        NSArray* primitives = [mesh[@"primitives"] isKindOfClass:[NSArray class]] ? mesh[@"primitives"] : nil;
+        if (!mesh || !primitives) {
+            continue;
+        }
+        for (id primEntry in primitives) {
+            NSDictionary* primitive = [primEntry isKindOfClass:[NSDictionary class]] ? primEntry : nil;
+            NSDictionary* attributes = [primitive[@"attributes"] isKindOfClass:[NSDictionary class]] ? primitive[@"attributes"] : nil;
+            if (!primitive || !attributes) {
+                continue;
+            }
+            const int positionIndex = ToInt(attributes[@"POSITION"], -1);
+            if (positionIndex < 0 || positionIndex >= (int)accessors.size()) {
+                continue;
+            }
+            std::vector<float> positions;
+            if (!ReadAccessorVec3(accessors[positionIndex], views, buffers, positions)) {
+                continue;
+            }
+            const size_t vertexCount = positions.size() / 3;
+            if (vertexCount == 0) {
+                continue;
+            }
+            std::vector<float> transformed(positions.size());
+            for (size_t i = 0; i < positions.size(); i += 3) {
+                math::float3 p = TransformPosition(world[nodeIndex], positions[i], positions[i + 1], positions[i + 2]);
+                transformed[i] = p.x;
+                transformed[i + 1] = p.y;
+                transformed[i + 2] = p.z;
+            }
+            const uint32_t baseVertex = (uint32_t)(_wireframePositions.size() / 3);
+            _wireframePositions.insert(_wireframePositions.end(), transformed.begin(), transformed.end());
+            std::vector<uint32_t> indices;
+            if (primitive[@"indices"]) {
+                const int indexAccessorIndex = ToInt(primitive[@"indices"], -1);
+                if (indexAccessorIndex < 0 || indexAccessorIndex >= (int)accessors.size()) {
+                    continue;
+                }
+                if (!ReadAccessorIndices(accessors[indexAccessorIndex], views, buffers, indices)) {
+                    continue;
+                }
+            } else {
+                indices.resize(vertexCount);
+                for (size_t i = 0; i < vertexCount; ++i) {
+                    indices[i] = (uint32_t)i;
+                }
+            }
+            bool valid = true;
+            for (uint32_t idx : indices) {
+                if (idx >= vertexCount) {
+                    valid = false;
+                    break;
+                }
+            }
+            if (!valid) {
+                continue;
+            }
+            const int mode = ToInt(primitive[@"mode"], 4);
+            std::vector<uint32_t> edges = BuildWireframeEdges(indices, mode);
+            if (edges.empty()) {
+                continue;
+            }
+            for (uint32_t edge : edges) {
+                _wireframeIndices.push_back(baseVertex + edge);
+            }
+        }
+    }
+    if (!_wireframePositions.empty()) {
+        float minX = _wireframePositions[0];
+        float maxX = _wireframePositions[0];
+        float minY = _wireframePositions[1];
+        float maxY = _wireframePositions[1];
+        float minZ = _wireframePositions[2];
+        float maxZ = _wireframePositions[2];
+        for (size_t i = 0; i + 2 < _wireframePositions.size(); i += 3) {
+            const float x = _wireframePositions[i];
+            const float y = _wireframePositions[i + 1];
+            const float z = _wireframePositions[i + 2];
+            minX = std::min(minX, x);
+            maxX = std::max(maxX, x);
+            minY = std::min(minY, y);
+            maxY = std::max(maxY, y);
+            minZ = std::min(minZ, z);
+            maxZ = std::max(maxZ, z);
+        }
+        const float cx = (minX + maxX) * 0.5f;
+        const float cy = (minY + maxY) * 0.5f;
+        const float cz = (minZ + maxZ) * 0.5f;
+        const float scale = 1.01f;
+        for (size_t i = 0; i + 2 < _wireframePositions.size(); i += 3) {
+            _wireframePositions[i] = cx + (_wireframePositions[i] - cx) * scale;
+            _wireframePositions[i + 1] = cy + (_wireframePositions[i + 1] - cy) * scale;
+            _wireframePositions[i + 2] = cz + (_wireframePositions[i + 2] - cz) * scale;
+        }
+    }
+    if (!_wireframePositions.empty() && !_wireframeIndices.empty()) {
+        _hasWireframeData = true;
+    }
+}
+
 - (void)updateWireframe {
     if (!_scene) {
         return;
     }
-    if (!_wireframeEnabled || !_asset) {
-        if (_wireframeEntity) {
-            _scene->remove(_wireframeEntity);
-            _wireframeEntity.clear();
-        }
+    [self destroyWireframeRenderable];
+    if (!_wireframeEnabled || !_hasWireframeData) {
+        return;
+    }
+    if (_wireframePositions.empty() || _wireframeIndices.empty()) {
         return;
     }
     Material* material = [self ensureDebugLineMaterial];
@@ -1041,21 +1763,51 @@ void EnsureJobSystemAdopted(Engine* engine) {
             LinearColorA{0.0f, 0.85f, 1.0f, 0.6f}
         );
     }
-    _wireframeEntity = _asset->getWireframe();
-    if (!_wireframeEntity) {
-        [self logDebug:@"Wireframe entity unavailable."];
+    const size_t vertexCount = _wireframePositions.size() / 3;
+    const size_t indexCount = _wireframeIndices.size();
+    if (vertexCount == 0 || indexCount == 0) {
         return;
     }
-    RenderableManager& rm = _engine->getRenderableManager();
-    auto instance = rm.getInstance(_wireframeEntity);
-    if (!instance) {
-        [self logDebug:@"Wireframe renderable not ready."];
+    float* vertices = (float*)malloc(sizeof(float) * _wireframePositions.size());
+    uint32_t* indices = (uint32_t*)malloc(sizeof(uint32_t) * _wireframeIndices.size());
+    if (!vertices || !indices) {
+        if (vertices) {
+            free(vertices);
+        }
+        if (indices) {
+            free(indices);
+        }
         return;
     }
-    rm.setMaterialInstanceAt(instance, 0, _wireframeMaterialInstance);
-    if (!_scene->hasEntity(_wireframeEntity)) {
-        _scene->addEntity(_wireframeEntity);
-    }
+    memcpy(vertices, _wireframePositions.data(), sizeof(float) * _wireframePositions.size());
+    memcpy(indices, _wireframeIndices.data(), sizeof(uint32_t) * _wireframeIndices.size());
+    _wireframeVertexBuffer = VertexBuffer::Builder()
+        .bufferCount(1)
+        .vertexCount((uint32_t)vertexCount)
+        .attribute(VertexAttribute::POSITION, 0, VertexBuffer::AttributeType::FLOAT3)
+        .build(*_engine);
+    _wireframeIndexBuffer = IndexBuffer::Builder()
+        .indexCount((uint32_t)indexCount)
+        .bufferType(IndexBuffer::IndexType::UINT)
+        .build(*_engine);
+    _wireframeVertexBuffer->setBufferAt(
+        *_engine,
+        0,
+        VertexBuffer::BufferDescriptor(vertices, sizeof(float) * _wireframePositions.size(), ReleaseBuffer)
+    );
+    _wireframeIndexBuffer->setBuffer(
+        *_engine,
+        IndexBuffer::BufferDescriptor(indices, sizeof(uint32_t) * _wireframeIndices.size(), ReleaseBuffer)
+    );
+    _wireframeEntity = EntityManager::get().create();
+    RenderableManager::Builder(1)
+        .culling(false)
+        .castShadows(false)
+        .receiveShadows(false)
+        .material(0, _wireframeMaterialInstance)
+        .geometry(0, RenderableManager::PrimitiveType::LINES, _wireframeVertexBuffer, _wireframeIndexBuffer)
+        .build(*_engine, _wireframeEntity);
+    _scene->addEntity(_wireframeEntity);
     [self logDebug:@"Wireframe enabled."];
 }
 
@@ -1130,6 +1882,24 @@ void EnsureJobSystemAdopted(Engine* engine) {
         .build(*_engine, _boundsEntity);
     _scene->addEntity(_boundsEntity);
     [self logDebug:@"Bounding box enabled."];
+}
+
+- (void)destroyWireframeRenderable {
+    if (_wireframeEntity) {
+        if (_scene && _scene->hasEntity(_wireframeEntity)) {
+            _scene->remove(_wireframeEntity);
+        }
+        _engine->destroy(_wireframeEntity);
+        _wireframeEntity.clear();
+    }
+    if (_wireframeVertexBuffer) {
+        _engine->destroy(_wireframeVertexBuffer);
+        _wireframeVertexBuffer = nullptr;
+    }
+    if (_wireframeIndexBuffer) {
+        _engine->destroy(_wireframeIndexBuffer);
+        _wireframeIndexBuffer = nullptr;
+    }
 }
 
 - (void)destroyBoundsRenderable {

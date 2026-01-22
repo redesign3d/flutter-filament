@@ -1,6 +1,8 @@
 package com.example.filament_widget
 
 import android.content.res.AssetManager
+import android.net.Uri
+import android.util.Base64
 import android.view.Surface
 import com.google.android.filament.Camera
 import com.google.android.filament.ColorGrading
@@ -32,6 +34,10 @@ import java.nio.ByteOrder
 import java.nio.FloatBuffer
 import java.nio.IntBuffer
 import java.util.Locale
+import kotlin.math.max
+import kotlin.math.min
+import org.json.JSONArray
+import org.json.JSONObject
 import android.util.Log
 import com.google.android.filament.Box
 import com.google.android.filament.IndexBuffer
@@ -55,6 +61,27 @@ class FilamentViewer(
         val indices: IntArray,
     )
 
+    private data class GltfSource(
+        val json: JSONObject,
+        val binChunk: ByteArray?,
+    )
+
+    private data class BufferViewInfo(
+        val buffer: Int,
+        val byteOffset: Int,
+        val byteLength: Int,
+        val byteStride: Int,
+    )
+
+    private data class AccessorInfo(
+        val bufferView: Int,
+        val byteOffset: Int,
+        val componentType: Int,
+        val count: Int,
+        val type: String,
+        val hasSparse: Boolean,
+    )
+
     private val engine: Engine = FilamentEngineManager.getEngine()
     private val renderer: Renderer = engine.createRenderer()
     private val view: View = engine.createView()
@@ -67,6 +94,7 @@ class FilamentViewer(
     private var resourceLoader: ResourceLoader? = null
     private var filamentAsset: FilamentAsset? = null
     private var pendingAsset: FilamentAsset? = null
+    private var pendingModelData: ByteArray? = null
     private var animator: Animator? = null
     private var animationIndex = 0
     private var animationLoop = true
@@ -77,6 +105,7 @@ class FilamentViewer(
     private var debugLineMaterial: Material? = null
     private var wireframeRenderable: DebugLineRenderable? = null
     private var boundsRenderable: DebugLineRenderable? = null
+    private var wireframeLineData: LineMeshData? = null
     private var wireframeEnabled = false
     private var boundingBoxesEnabled = false
     private var debugLoggingEnabled = false
@@ -87,6 +116,7 @@ class FilamentViewer(
     private var indirectLightCubemap: Texture? = null
     private var skybox: Skybox? = null
     private var skyboxCubemap: Texture? = null
+    private var environmentEnabled = true
     private var paused = false
     private var viewportWidth = 1
     private var viewportHeight = 1
@@ -173,6 +203,7 @@ class FilamentViewer(
         }
         filamentAsset = null
         pendingAsset = null
+        pendingModelData = null
         animator = null
         animationPlaying = false
         animationTimeSeconds = 0.0
@@ -181,6 +212,7 @@ class FilamentViewer(
         destroyDebugRenderable(boundsRenderable)
         wireframeRenderable = null
         boundsRenderable = null
+        wireframeLineData = null
         resourceLoader?.destroy()
         resourceLoader = null
         hasModelBounds = false
@@ -188,6 +220,7 @@ class FilamentViewer(
 
     fun beginModelLoad(buffer: ByteBuffer): List<String>? {
         clearScene()
+        pendingModelData = buffer.toByteArray()
         val loader = ensureAssetLoader()
         val asset = loader.createAsset(buffer) ?: run {
             eventEmitter("error", "Failed to parse glTF asset.")
@@ -206,11 +239,21 @@ class FilamentViewer(
         for ((uri, data) in resourceData) {
             loader.addResourceData(uri, data)
         }
-        loader.loadResources(asset)
+        try {
+            loader.loadResources(asset)
+        } catch (e: Exception) {
+            eventEmitter("error", "Failed to load glTF resources: ${e.message}")
+            assetLoader?.destroyAsset(asset)
+            pendingAsset = null
+            pendingModelData = null
+            return
+        }
         asset.releaseSourceData()
         scene.addEntities(asset.entities)
         filamentAsset = asset
         pendingAsset = null
+        wireframeLineData = buildWireframeLineData(resourceData)
+        pendingModelData = null
         animator = asset.instance?.animator
         animationPlaying = false
         animationTimeSeconds = 0.0
@@ -369,6 +412,11 @@ class FilamentViewer(
         applyDynamicResolution()
     }
 
+    fun setEnvironmentEnabled(enabled: Boolean) {
+        environmentEnabled = enabled
+        scene.skybox = if (enabled) skybox else null
+    }
+
     fun setToneMappingFilmic() {
         val grading = ColorGrading.Builder()
             .toneMapping(ColorGrading.ToneMapping.FILMIC)
@@ -436,7 +484,7 @@ class FilamentViewer(
         skyboxCubemap?.let { engine.destroyTexture(it) }
         skybox = bundle.skybox
         skyboxCubemap = bundle.cubemap
-        scene.skybox = skybox
+        scene.skybox = if (environmentEnabled) skybox else null
     }
 
     private fun ensureAssetLoader(): AssetLoader {
@@ -524,7 +572,7 @@ class FilamentViewer(
         if (!wireframeEnabled) {
             return
         }
-        val data = buildWireframeLineData() ?: return
+        val data = wireframeLineData ?: return
         wireframeRenderable = buildDebugRenderable(
             data,
             floatArrayOf(0.0f, 0.85f, 1.0f, 0.6f),
@@ -548,94 +596,567 @@ class FilamentViewer(
         logDebug("Bounding box renderable updated.")
     }
 
-    private fun buildWireframeLineData(): LineMeshData? {
-        val asset = filamentAsset ?: return null
-        val renderables = asset.renderableEntities
-        if (renderables.isEmpty()) {
-            return null
-        }
-        val tm = engine.transformManager
-        val rm = engine.renderableManager
-        val valid = mutableListOf<Int>()
-        for (entity in renderables) {
-            if (!tm.hasComponent(entity)) {
+    private fun buildWireframeLineData(resourceData: Map<String, ByteBuffer>): LineMeshData? {
+        val source = pendingModelData ?: return null
+        val gltf = parseGltfSource(source) ?: return null
+        val json = gltf.json
+        val accessorsJson = json.optJSONArray("accessors") ?: return null
+        val bufferViewsJson = json.optJSONArray("bufferViews") ?: return null
+        val buffersJson = json.optJSONArray("buffers") ?: return null
+        val meshesJson = json.optJSONArray("meshes") ?: return null
+        val nodesJson = json.optJSONArray("nodes") ?: JSONArray()
+        val resourceMap = buildResourceDataMap(resourceData)
+        val bufferData = resolveBufferDataList(buffersJson, resourceMap, gltf.binChunk) ?: return null
+        val bufferViews = parseBufferViews(bufferViewsJson)
+        val accessors = parseAccessors(accessorsJson)
+        val nodeWorld = buildNodeWorldMatrices(json, nodesJson)
+        val positionsOut = ArrayList<Float>()
+        val indicesOut = ArrayList<Int>()
+        for (nodeIndex in 0 until nodesJson.length()) {
+            val node = nodesJson.optJSONObject(nodeIndex) ?: continue
+            val meshIndex = node.optInt("mesh", -1)
+            if (meshIndex < 0 || meshIndex >= meshesJson.length()) {
                 continue
             }
-            val instance = rm.getInstance(entity)
-            if (instance != 0) {
-                valid.add(entity)
+            val mesh = meshesJson.optJSONObject(meshIndex) ?: continue
+            val primitives = mesh.optJSONArray("primitives") ?: continue
+            val world = if (nodeWorld.isNotEmpty()) nodeWorld[nodeIndex] else identityMatrix()
+            for (p in 0 until primitives.length()) {
+                val primitive = primitives.optJSONObject(p) ?: continue
+                val attributes = primitive.optJSONObject("attributes") ?: continue
+                val positionAccessorIndex = attributes.optInt("POSITION", -1)
+                if (positionAccessorIndex < 0 || positionAccessorIndex >= accessors.size) {
+                    continue
+                }
+                val positions = readAccessorVec3(
+                    accessors[positionAccessorIndex],
+                    bufferViews,
+                    bufferData,
+                ) ?: continue
+                val vertexCount = positions.size / 3
+                if (vertexCount == 0) {
+                    continue
+                }
+                val transformed = FloatArray(positions.size)
+                var cursor = 0
+                while (cursor < positions.size) {
+                    val transformedPoint = transformPosition(
+                        world,
+                        positions[cursor],
+                        positions[cursor + 1],
+                        positions[cursor + 2],
+                    )
+                    transformed[cursor] = transformedPoint[0]
+                    transformed[cursor + 1] = transformedPoint[1]
+                    transformed[cursor + 2] = transformedPoint[2]
+                    cursor += 3
+                }
+                val baseVertex = positionsOut.size / 3
+                for (value in transformed) {
+                    positionsOut.add(value)
+                }
+                val indices = if (primitive.has("indices")) {
+                    val indexAccessorIndex = primitive.optInt("indices", -1)
+                    if (indexAccessorIndex >= 0 && indexAccessorIndex < accessors.size) {
+                        readAccessorIndices(accessors[indexAccessorIndex], bufferViews, bufferData)
+                    } else {
+                        null
+                    }
+                } else {
+                    IntArray(vertexCount) { it }
+                } ?: continue
+                val mode = primitive.optInt("mode", 4)
+                val edges = buildWireframeEdges(indices, mode) ?: continue
+                for (edge in edges) {
+                    indicesOut.add(baseVertex + edge)
+                }
             }
         }
-        if (valid.isEmpty()) {
+        if (positionsOut.isEmpty() || indicesOut.isEmpty()) {
             return null
         }
-        val positions = FloatArray(valid.size * 8 * 3)
-        val indices = IntArray(valid.size * 24)
-        val edgeIndices = intArrayOf(
-            0,
-            1,
-            1,
-            3,
-            3,
-            2,
-            2,
-            0,
-            4,
-            5,
-            5,
-            7,
-            7,
-            6,
-            6,
-            4,
-            0,
-            4,
-            2,
-            6,
-            1,
-            5,
-            3,
-            7,
-        )
-        val world = FloatArray(16)
-        var vIndex = 0
-        var iIndex = 0
-        for (entity in valid) {
-            val renderable = rm.getInstance(entity)
-            val transform = tm.getInstance(entity)
-            tm.getWorldTransform(transform, world)
-            val box = Box()
-            rm.getAxisAlignedBoundingBox(renderable, box)
-            val center = box.center
-            val half = box.halfExtent
-            val minX = center[0] - half[0]
-            val minY = center[1] - half[1]
-            val minZ = center[2] - half[2]
-            val maxX = center[0] + half[0]
-            val maxY = center[1] + half[1]
-            val maxZ = center[2] + half[2]
-            val corners = arrayOf(
-                floatArrayOf(minX, minY, minZ),
-                floatArrayOf(minX, minY, maxZ),
-                floatArrayOf(minX, maxY, minZ),
-                floatArrayOf(minX, maxY, maxZ),
-                floatArrayOf(maxX, minY, minZ),
-                floatArrayOf(maxX, minY, maxZ),
-                floatArrayOf(maxX, maxY, minZ),
-                floatArrayOf(maxX, maxY, maxZ),
-            )
-            val baseVertex = vIndex / 3
-            for (corner in corners) {
-                val transformed = transformPoint(world, corner[0], corner[1], corner[2])
-                positions[vIndex++] = transformed[0]
-                positions[vIndex++] = transformed[1]
-                positions[vIndex++] = transformed[2]
-            }
-            for (edge in edgeIndices) {
-                indices[iIndex++] = baseVertex + edge
+        var minX = positionsOut[0]
+        var maxX = positionsOut[0]
+        var minY = positionsOut[1]
+        var maxY = positionsOut[1]
+        var minZ = positionsOut[2]
+        var maxZ = positionsOut[2]
+        var i = 0
+        while (i + 2 < positionsOut.size) {
+            val x = positionsOut[i]
+            val y = positionsOut[i + 1]
+            val z = positionsOut[i + 2]
+            if (x < minX) minX = x
+            if (x > maxX) maxX = x
+            if (y < minY) minY = y
+            if (y > maxY) maxY = y
+            if (z < minZ) minZ = z
+            if (z > maxZ) maxZ = z
+            i += 3
+        }
+        val cx = (minX + maxX) * 0.5f
+        val cy = (minY + maxY) * 0.5f
+        val cz = (minZ + maxZ) * 0.5f
+        val scale = 1.01f
+        i = 0
+        while (i + 2 < positionsOut.size) {
+            positionsOut[i] = cx + (positionsOut[i] - cx) * scale
+            positionsOut[i + 1] = cy + (positionsOut[i + 1] - cy) * scale
+            positionsOut[i + 2] = cz + (positionsOut[i + 2] - cz) * scale
+            i += 3
+        }
+        return LineMeshData(positionsOut.toFloatArray(), indicesOut.toIntArray())
+    }
+
+    private fun parseGltfSource(data: ByteArray): GltfSource? {
+        if (data.size >= 12) {
+            val buffer = ByteBuffer.wrap(data).order(ByteOrder.LITTLE_ENDIAN)
+            val magic = buffer.int
+            if (magic == 0x46546C67) {
+                buffer.int
+                val length = buffer.int
+                if (length > data.size || length < 12) {
+                    return null
+                }
+                var jsonChunk: ByteArray? = null
+                var binChunk: ByteArray? = null
+                while (buffer.remaining() >= 8) {
+                    val chunkLength = buffer.int
+                    val chunkType = buffer.int
+                    if (chunkLength < 0 || chunkLength > buffer.remaining()) {
+                        return null
+                    }
+                    val chunkData = ByteArray(chunkLength)
+                    buffer.get(chunkData)
+                    when (chunkType) {
+                        0x4E4F534A -> jsonChunk = chunkData
+                        0x004E4942 -> binChunk = chunkData
+                    }
+                }
+                val jsonBytes = jsonChunk ?: return null
+                return GltfSource(JSONObject(String(jsonBytes, Charsets.UTF_8)), binChunk)
             }
         }
-        return LineMeshData(positions, indices)
+        return GltfSource(JSONObject(String(data, Charsets.UTF_8)), null)
+    }
+
+    private fun buildResourceDataMap(resourceData: Map<String, ByteBuffer>): Map<String, ByteArray> {
+        val map = mutableMapOf<String, ByteArray>()
+        for ((key, buffer) in resourceData) {
+            val bytes = buffer.toByteArray()
+            map[key] = bytes
+            val decoded = Uri.decode(key)
+            if (decoded != key) {
+                map[decoded] = bytes
+            }
+            if (key.startsWith("./")) {
+                map[key.removePrefix("./")] = bytes
+            }
+            val lastSegment = key.substringAfterLast('/')
+            if (lastSegment != key) {
+                map[lastSegment] = bytes
+            }
+        }
+        return map
+    }
+
+    private fun resolveBufferDataList(
+        buffersJson: JSONArray,
+        resourceMap: Map<String, ByteArray>,
+        embeddedBin: ByteArray?,
+    ): List<ByteArray>? {
+        val buffers = ArrayList<ByteArray>(buffersJson.length())
+        for (i in 0 until buffersJson.length()) {
+            val buffer = buffersJson.optJSONObject(i) ?: return null
+            val uri = buffer.optString("uri", "")
+            val data = if (uri.isNotEmpty()) {
+                resolveBufferData(uri, resourceMap, embeddedBin)
+            } else {
+                embeddedBin
+            }
+            if (data == null) {
+                return null
+            }
+            buffers.add(data)
+        }
+        return buffers
+    }
+
+    private fun resolveBufferData(
+        uri: String,
+        resourceMap: Map<String, ByteArray>,
+        embeddedBin: ByteArray?,
+    ): ByteArray? {
+        if (uri.startsWith("data:")) {
+            return decodeDataUri(uri)
+        }
+        return resourceMap[uri]
+            ?: resourceMap[Uri.decode(uri)]
+            ?: resourceMap[uri.removePrefix("./")]
+            ?: resourceMap[uri.substringAfterLast('/')]
+            ?: embeddedBin
+    }
+
+    private fun decodeDataUri(uri: String): ByteArray? {
+        val commaIndex = uri.indexOf(',')
+        if (commaIndex == -1) {
+            return null
+        }
+        val metadata = uri.substring(5, commaIndex)
+        val dataPart = uri.substring(commaIndex + 1)
+        return if (metadata.endsWith(";base64")) {
+            Base64.decode(dataPart, Base64.DEFAULT)
+        } else {
+            Uri.decode(dataPart).toByteArray(Charsets.UTF_8)
+        }
+    }
+
+    private fun parseBufferViews(bufferViewsJson: JSONArray): List<BufferViewInfo> {
+        val list = ArrayList<BufferViewInfo>(bufferViewsJson.length())
+        for (i in 0 until bufferViewsJson.length()) {
+            val view = bufferViewsJson.optJSONObject(i) ?: continue
+            list.add(
+                BufferViewInfo(
+                    buffer = view.optInt("buffer", -1),
+                    byteOffset = view.optInt("byteOffset", 0),
+                    byteLength = view.optInt("byteLength", 0),
+                    byteStride = view.optInt("byteStride", 0),
+                ),
+            )
+        }
+        return list
+    }
+
+    private fun parseAccessors(accessorsJson: JSONArray): List<AccessorInfo> {
+        val list = ArrayList<AccessorInfo>(accessorsJson.length())
+        for (i in 0 until accessorsJson.length()) {
+            val accessor = accessorsJson.optJSONObject(i) ?: continue
+            list.add(
+                AccessorInfo(
+                    bufferView = accessor.optInt("bufferView", -1),
+                    byteOffset = accessor.optInt("byteOffset", 0),
+                    componentType = accessor.optInt("componentType", -1),
+                    count = accessor.optInt("count", 0),
+                    type = accessor.optString("type", ""),
+                    hasSparse = accessor.has("sparse"),
+                ),
+            )
+        }
+        return list
+    }
+
+    private fun readAccessorVec3(
+        accessor: AccessorInfo,
+        bufferViews: List<BufferViewInfo>,
+        buffers: List<ByteArray>,
+    ): FloatArray? {
+        if (accessor.bufferView < 0 || accessor.type != "VEC3" || accessor.componentType != 5126) {
+            return null
+        }
+        if (accessor.hasSparse) {
+            return null
+        }
+        val view = bufferViews.getOrNull(accessor.bufferView) ?: return null
+        val buffer = buffers.getOrNull(view.buffer) ?: return null
+        val stride = if (view.byteStride > 0) view.byteStride else 12
+        val offset = view.byteOffset + accessor.byteOffset
+        if (offset < 0 || offset >= buffer.size) {
+            return null
+        }
+        val expectedEnd = offset + stride * max(0, accessor.count - 1) + 12
+        if (expectedEnd > buffer.size) {
+            return null
+        }
+        val result = FloatArray(accessor.count * 3)
+        val byteBuffer = ByteBuffer.wrap(buffer).order(ByteOrder.LITTLE_ENDIAN)
+        var cursor = offset
+        var resultIndex = 0
+        repeat(accessor.count) {
+            byteBuffer.position(cursor)
+            result[resultIndex++] = byteBuffer.float
+            result[resultIndex++] = byteBuffer.float
+            result[resultIndex++] = byteBuffer.float
+            cursor += stride
+        }
+        return result
+    }
+
+    private fun readAccessorIndices(
+        accessor: AccessorInfo,
+        bufferViews: List<BufferViewInfo>,
+        buffers: List<ByteArray>,
+    ): IntArray? {
+        if (accessor.bufferView < 0 || accessor.type != "SCALAR") {
+            return null
+        }
+        if (accessor.hasSparse) {
+            return null
+        }
+        val view = bufferViews.getOrNull(accessor.bufferView) ?: return null
+        val buffer = buffers.getOrNull(view.buffer) ?: return null
+        val componentSize = when (accessor.componentType) {
+            5121 -> 1
+            5123 -> 2
+            5125 -> 4
+            else -> return null
+        }
+        val stride = if (view.byteStride > 0) view.byteStride else componentSize
+        val offset = view.byteOffset + accessor.byteOffset
+        if (offset < 0 || offset >= buffer.size) {
+            return null
+        }
+        val expectedEnd = offset + stride * max(0, accessor.count - 1) + componentSize
+        if (expectedEnd > buffer.size) {
+            return null
+        }
+        val result = IntArray(accessor.count)
+        val byteBuffer = ByteBuffer.wrap(buffer).order(ByteOrder.LITTLE_ENDIAN)
+        var cursor = offset
+        for (i in 0 until accessor.count) {
+            byteBuffer.position(cursor)
+            result[i] = when (accessor.componentType) {
+                5121 -> byteBuffer.get().toInt() and 0xFF
+                5123 -> byteBuffer.short.toInt() and 0xFFFF
+                5125 -> byteBuffer.int
+                else -> 0
+            }
+            cursor += stride
+        }
+        return result
+    }
+
+    private fun buildWireframeEdges(indices: IntArray, mode: Int): IntArray? {
+        if (indices.size < 3) {
+            return null
+        }
+        val edges = ArrayList<Int>()
+        val seen = HashSet<Long>()
+        fun addEdge(a: Int, b: Int) {
+            val minIndex = min(a, b)
+            val maxIndex = max(a, b)
+            val key = (minIndex.toLong() shl 32) or (maxIndex.toLong() and 0xffffffffL)
+            if (seen.add(key)) {
+                edges.add(a)
+                edges.add(b)
+            }
+        }
+        when (mode) {
+            4 -> {
+                val triangleCount = indices.size / 3
+                for (i in 0 until triangleCount) {
+                    val base = i * 3
+                    val a = indices[base]
+                    val b = indices[base + 1]
+                    val c = indices[base + 2]
+                    addEdge(a, b)
+                    addEdge(b, c)
+                    addEdge(c, a)
+                }
+            }
+            5 -> {
+                for (i in 0 until indices.size - 2) {
+                    var a = indices[i]
+                    var b = indices[i + 1]
+                    var c = indices[i + 2]
+                    if (i % 2 == 1) {
+                        val temp = b
+                        b = c
+                        c = temp
+                    }
+                    addEdge(a, b)
+                    addEdge(b, c)
+                    addEdge(c, a)
+                }
+            }
+            6 -> {
+                val first = indices[0]
+                for (i in 1 until indices.size - 1) {
+                    val a = first
+                    val b = indices[i]
+                    val c = indices[i + 1]
+                    addEdge(a, b)
+                    addEdge(b, c)
+                    addEdge(c, a)
+                }
+            }
+            else -> return null
+        }
+        return edges.toIntArray()
+    }
+
+    private fun buildNodeWorldMatrices(
+        json: JSONObject,
+        nodesJson: JSONArray,
+    ): Array<DoubleArray> {
+        val count = nodesJson.length()
+        if (count == 0) {
+            return emptyArray()
+        }
+        val localMatrices = Array(count) { identityMatrix() }
+        val children = Array(count) { IntArray(0) }
+        val hasParent = BooleanArray(count)
+        for (i in 0 until count) {
+            val node = nodesJson.optJSONObject(i) ?: continue
+            localMatrices[i] = parseNodeMatrix(node)
+            val childrenArray = node.optJSONArray("children")
+            if (childrenArray != null) {
+                val list = IntArray(childrenArray.length())
+                for (j in 0 until childrenArray.length()) {
+                    val childIndex = childrenArray.optInt(j, -1)
+                    list[j] = childIndex
+                    if (childIndex in 0 until count) {
+                        hasParent[childIndex] = true
+                    }
+                }
+                children[i] = list
+            }
+        }
+        val world = Array(count) { identityMatrix() }
+        val roots = mutableListOf<Int>()
+        val scenes = json.optJSONArray("scenes")
+        val sceneIndex = json.optInt("scene", 0)
+        if (scenes != null && scenes.length() > 0) {
+            val scene = scenes.optJSONObject(sceneIndex.coerceIn(0, scenes.length() - 1))
+            val sceneNodes = scene?.optJSONArray("nodes")
+            if (sceneNodes != null) {
+                for (i in 0 until sceneNodes.length()) {
+                    val nodeIndex = sceneNodes.optInt(i, -1)
+                    if (nodeIndex in 0 until count) {
+                        roots.add(nodeIndex)
+                    }
+                }
+            }
+        }
+        if (roots.isEmpty()) {
+            for (i in 0 until count) {
+                if (!hasParent[i]) {
+                    roots.add(i)
+                }
+            }
+        }
+        if (roots.isEmpty()) {
+            return world
+        }
+        for (root in roots) {
+            computeWorldMatrix(root, identityMatrix(), localMatrices, children, world)
+        }
+        return world
+    }
+
+    private fun computeWorldMatrix(
+        index: Int,
+        parent: DoubleArray,
+        locals: Array<DoubleArray>,
+        children: Array<IntArray>,
+        output: Array<DoubleArray>,
+    ) {
+        if (index !in output.indices) {
+            return
+        }
+        val world = multiplyMatrices(parent, locals[index])
+        output[index] = world
+        for (child in children[index]) {
+            computeWorldMatrix(child, world, locals, children, output)
+        }
+    }
+
+    private fun parseNodeMatrix(node: JSONObject): DoubleArray {
+        val matrixArray = node.optJSONArray("matrix")
+        if (matrixArray != null && matrixArray.length() == 16) {
+            val matrix = DoubleArray(16)
+            for (i in 0 until 16) {
+                matrix[i] = matrixArray.optDouble(i, if (i % 5 == 0) 1.0 else 0.0)
+            }
+            return matrix
+        }
+        val translation = node.optJSONArray("translation")
+        val rotation = node.optJSONArray("rotation")
+        val scale = node.optJSONArray("scale")
+        val tx = translation?.optDouble(0, 0.0) ?: 0.0
+        val ty = translation?.optDouble(1, 0.0) ?: 0.0
+        val tz = translation?.optDouble(2, 0.0) ?: 0.0
+        val qx = rotation?.optDouble(0, 0.0) ?: 0.0
+        val qy = rotation?.optDouble(1, 0.0) ?: 0.0
+        val qz = rotation?.optDouble(2, 0.0) ?: 0.0
+        val qw = rotation?.optDouble(3, 1.0) ?: 1.0
+        val sx = scale?.optDouble(0, 1.0) ?: 1.0
+        val sy = scale?.optDouble(1, 1.0) ?: 1.0
+        val sz = scale?.optDouble(2, 1.0) ?: 1.0
+        val t = translationMatrix(tx, ty, tz)
+        val r = rotationMatrix(qx, qy, qz, qw)
+        val s = scaleMatrix(sx, sy, sz)
+        return multiplyMatrices(t, multiplyMatrices(r, s))
+    }
+
+    private fun identityMatrix(): DoubleArray = doubleArrayOf(
+        1.0, 0.0, 0.0, 0.0,
+        0.0, 1.0, 0.0, 0.0,
+        0.0, 0.0, 1.0, 0.0,
+        0.0, 0.0, 0.0, 1.0,
+    )
+
+    private fun translationMatrix(tx: Double, ty: Double, tz: Double): DoubleArray = doubleArrayOf(
+        1.0, 0.0, 0.0, 0.0,
+        0.0, 1.0, 0.0, 0.0,
+        0.0, 0.0, 1.0, 0.0,
+        tx, ty, tz, 1.0,
+    )
+
+    private fun scaleMatrix(sx: Double, sy: Double, sz: Double): DoubleArray = doubleArrayOf(
+        sx, 0.0, 0.0, 0.0,
+        0.0, sy, 0.0, 0.0,
+        0.0, 0.0, sz, 0.0,
+        0.0, 0.0, 0.0, 1.0,
+    )
+
+    private fun rotationMatrix(qx: Double, qy: Double, qz: Double, qw: Double): DoubleArray {
+        val xx = qx * qx
+        val yy = qy * qy
+        val zz = qz * qz
+        val xy = qx * qy
+        val xz = qx * qz
+        val yz = qy * qz
+        val wx = qw * qx
+        val wy = qw * qy
+        val wz = qw * qz
+        val m00 = 1.0 - 2.0 * (yy + zz)
+        val m01 = 2.0 * (xy - wz)
+        val m02 = 2.0 * (xz + wy)
+        val m10 = 2.0 * (xy + wz)
+        val m11 = 1.0 - 2.0 * (xx + zz)
+        val m12 = 2.0 * (yz - wx)
+        val m20 = 2.0 * (xz - wy)
+        val m21 = 2.0 * (yz + wx)
+        val m22 = 1.0 - 2.0 * (xx + yy)
+        return doubleArrayOf(
+            m00, m10, m20, 0.0,
+            m01, m11, m21, 0.0,
+            m02, m12, m22, 0.0,
+            0.0, 0.0, 0.0, 1.0,
+        )
+    }
+
+    private fun multiplyMatrices(a: DoubleArray, b: DoubleArray): DoubleArray {
+        val out = DoubleArray(16)
+        for (c in 0..3) {
+            val col = c * 4
+            val b0 = b[col]
+            val b1 = b[col + 1]
+            val b2 = b[col + 2]
+            val b3 = b[col + 3]
+            out[col] = a[0] * b0 + a[4] * b1 + a[8] * b2 + a[12] * b3
+            out[col + 1] = a[1] * b0 + a[5] * b1 + a[9] * b2 + a[13] * b3
+            out[col + 2] = a[2] * b0 + a[6] * b1 + a[10] * b2 + a[14] * b3
+            out[col + 3] = a[3] * b0 + a[7] * b1 + a[11] * b2 + a[15] * b3
+        }
+        return out
+    }
+
+    private fun transformPosition(matrix: DoubleArray, x: Float, y: Float, z: Float): FloatArray {
+        val tx = matrix[0] * x + matrix[4] * y + matrix[8] * z + matrix[12]
+        val ty = matrix[1] * x + matrix[5] * y + matrix[9] * z + matrix[13]
+        val tz = matrix[2] * x + matrix[6] * y + matrix[10] * z + matrix[14]
+        return floatArrayOf(tx.toFloat(), ty.toFloat(), tz.toFloat())
     }
 
     private fun buildBoundingBoxLineData(): LineMeshData? {
@@ -859,5 +1380,12 @@ class FilamentViewer(
             extent[2].toDouble(),
         )
         hasModelBounds = true
+    }
+
+    private fun ByteBuffer.toByteArray(): ByteArray {
+        val copy = duplicate()
+        val bytes = ByteArray(copy.remaining())
+        copy.get(bytes)
+        return bytes
     }
 }

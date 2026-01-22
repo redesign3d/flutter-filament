@@ -4,6 +4,7 @@ material {
     blending : transparent,
     doubleSided : true,
     depthWrite : false,
+    depthCulling : false,
     parameters : [
         { name : color, type : float4 }
     ]

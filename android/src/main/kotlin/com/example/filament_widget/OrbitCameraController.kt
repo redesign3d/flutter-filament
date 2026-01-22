@@ -64,7 +64,7 @@ class OrbitCameraController {
     }
 
     fun orbitDelta(dxPixels: Double, dyPixels: Double) {
-        yawDeg += dxPixels * sensitivity
+        yawDeg -= dxPixels * sensitivity
         pitchDeg += dyPixels * sensitivity
         clampAngles()
     }
@@ -75,7 +75,7 @@ class OrbitCameraController {
             velocityPitch = 0.0
             return
         }
-        velocityYaw = velocityX * sensitivity
+        velocityYaw = -velocityX * sensitivity
         velocityPitch = velocityY * sensitivity
     }
 

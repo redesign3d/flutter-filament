@@ -65,6 +65,8 @@ typedef void (^FilamentFrameCallback)(void);
 
 - (void)setDynamicResolutionEnabled:(BOOL)enabled;
 
+- (void)setEnvironmentEnabled:(BOOL)enabled;
+
 - (void)setToneMappingFilmic;
 
 - (void)setShadowsEnabled:(BOOL)enabled;

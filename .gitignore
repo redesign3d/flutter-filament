@@ -32,6 +32,7 @@ migrate_working_dir/
 .flutter-plugins-dependencies
 build/
 tooling/filament-android-maven/
+tooling/filament-tools/
 ios/Filament.xcframework/
 ios/Filament.LICENSE
 ios/Filament.README.md
