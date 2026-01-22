@@ -50,6 +50,8 @@ public class FilamentWidgetPlugin: NSObject, FlutterPlugin, FlutterStreamHandler
       handleLoadModelFromAsset(call, result: result)
     case "loadModelFromUrl":
       handleLoadModelFromUrl(call, result: result)
+    case "loadModelFromFile":
+      handleLoadModelFromFile(call, result: result)
     case "getCacheSizeBytes":
       handleCacheSize(call, result: result)
     case "clearCache":
@@ -94,6 +96,8 @@ public class FilamentWidgetPlugin: NSObject, FlutterPlugin, FlutterStreamHandler
       handleSetMsaa(call, result: result)
     case "setDynamicResolutionEnabled":
       handleSetDynamicResolutionEnabled(call, result: result)
+    case "setEnvironmentEnabled":
+      handleSetEnvironmentEnabled(call, result: result)
     case "setToneMappingFilmic":
       handleSetToneMappingFilmic(call, result: result)
     case "setShadowsEnabled":
@@ -255,6 +259,18 @@ public class FilamentWidgetPlugin: NSObject, FlutterPlugin, FlutterStreamHandler
       return
     }
     controller.loadModelFromUrl(urlString: url, result: result)
+  }
+
+  private func handleLoadModelFromFile(_ call: FlutterMethodCall, result: @escaping FlutterResult) {
+    guard let controller = resolveController(call, result: result) else { return }
+    guard
+      let args = call.arguments as? [String: Any],
+      let filePath = args["filePath"] as? String
+    else {
+      result(FlutterError(code: "filament_error", message: "Missing filePath.", details: nil))
+      return
+    }
+    controller.loadModelFromFile(filePath: filePath, result: result)
   }
 
   private func handleCacheSize(_ call: FlutterMethodCall, result: @escaping FlutterResult) {
@@ -460,6 +476,13 @@ public class FilamentWidgetPlugin: NSObject, FlutterPlugin, FlutterStreamHandler
     let args = call.arguments as? [String: Any]
     let enabled = args?["enabled"] as? Bool ?? true
     controller.setDynamicResolutionEnabled(enabled, result: result)
+  }
+
+  private func handleSetEnvironmentEnabled(_ call: FlutterMethodCall, result: @escaping FlutterResult) {
+    guard let controller = resolveController(call, result: result) else { return }
+    let args = call.arguments as? [String: Any]
+    let enabled = args?["enabled"] as? Bool ?? true
+    controller.setEnvironmentEnabled(enabled, result: result)
   }
 
   private func handleSetToneMappingFilmic(_ call: FlutterMethodCall, result: @escaping FlutterResult) {

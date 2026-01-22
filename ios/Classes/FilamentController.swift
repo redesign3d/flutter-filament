@@ -169,6 +169,39 @@ final class FilamentController {
     }
   }
 
+  func loadModelFromFile(filePath: String, result: @escaping FlutterResult) {
+    guard let renderer else {
+      result(FlutterError(code: "filament_error", message: "Viewer not initialized.", details: nil))
+      return
+    }
+    let fileURL = URL(fileURLWithPath: filePath)
+    guard FileManager.default.fileExists(atPath: fileURL.path) else {
+      result(FlutterError(code: "filament_error", message: "File not found.", details: nil))
+      return
+    }
+    DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+      guard let self else { return }
+      do {
+        let data = try Data(contentsOf: fileURL)
+        self.renderLoop.perform {
+          renderer.setResourcePath(fileURL.path)
+          let uris = renderer.beginModelLoad(data)
+          DispatchQueue.main.async {
+            self.handleResourceUris(
+              uris,
+              baseURL: fileURL.deletingLastPathComponent(),
+              mode: .localFile,
+              cacheRoot: nil,
+              result: result
+            )
+          }
+        }
+      } catch {
+        self.emitError("Failed to read file: \(error.localizedDescription)", result: result)
+      }
+    }
+  }
+
   func setIBLFromAsset(ktxPath: String, result: @escaping FlutterResult) {
     guard let renderer else {
       result(FlutterError(code: "filament_error", message: "Viewer not initialized.", details: nil))
@@ -525,6 +558,17 @@ final class FilamentController {
     }
   }
 
+  func setEnvironmentEnabled(_ enabled: Bool, result: @escaping FlutterResult) {
+    guard let renderer else {
+      result(nil)
+      return
+    }
+    renderLoop.perform {
+      renderer.setEnvironmentEnabled(enabled)
+      DispatchQueue.main.async { result(nil) }
+    }
+  }
+
   func setToneMappingFilmic(result: @escaping FlutterResult) {
     guard let renderer else {
       result(nil)
@@ -618,6 +662,7 @@ final class FilamentController {
   private enum ResourceMode {
     case asset
     case remote
+    case localFile
   }
 
   private func handleResourceUris(
@@ -648,32 +693,34 @@ final class FilamentController {
     DispatchQueue.global(qos: .userInitiated).async { [weak self] in
       guard let self else { return }
       do {
-        var resources: [String: Data] = [:]
-        for uri in uris {
-          if uri.hasPrefix("data:") {
-            continue
+        var resourceData: [String: Data] = [:]
+        for uri in uris where !uri.hasPrefix("data:") {
+          let resourceURL: URL
+          if uri.hasPrefix("file://"), let url = URL(string: uri) {
+            resourceURL = url
+          } else if uri.hasPrefix("/") {
+            resourceURL = URL(fileURLWithPath: uri)
+          } else {
+            resourceURL = URL(string: uri, relativeTo: baseURL)?.absoluteURL ?? baseURL.appendingPathComponent(uri)
           }
-          switch mode {
-          case .asset:
-            let resourceURL = baseURL.appendingPathComponent(uri)
-            resources[uri] = try Data(contentsOf: resourceURL)
-          case .remote:
-            let resourceURL = URL(string: uri, relativeTo: baseURL)?.absoluteURL ?? baseURL.appendingPathComponent(uri)
+          if mode == .remote {
+            let cached: URL
             if let cacheRoot {
-              let cached = try self.cacheManager.getOrDownload(
+              cached = try self.cacheManager.getOrDownload(
                 url: resourceURL,
                 cacheRoot: cacheRoot,
                 relativePath: uri
               )
-              resources[uri] = try Data(contentsOf: cached)
             } else {
-              let cached = try self.cacheManager.getOrDownload(url: resourceURL)
-              resources[uri] = try Data(contentsOf: cached)
+              cached = try self.cacheManager.getOrDownload(url: resourceURL)
             }
+            resourceData[uri] = try Data(contentsOf: cached)
+          } else {
+            resourceData[uri] = try Data(contentsOf: resourceURL)
           }
         }
         self.renderLoop.perform {
-          let loaded = renderer.finishModelLoad(resources)
+          let loaded = renderer.finishModelLoad(resourceData)
           DispatchQueue.main.async {
             if loaded {
               self.eventEmitter("modelLoaded", "Model loaded.")

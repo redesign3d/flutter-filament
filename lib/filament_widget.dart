@@ -337,6 +337,14 @@ class FilamentController {
     });
   }
 
+  Future<void> loadModelFromFile(String filePath) async {
+    await _ensureInitialized();
+    await _methodChannel.invokeMethod<void>('loadModelFromFile', {
+      'controllerId': _controllerId,
+      'filePath': filePath,
+    });
+  }
+
   Future<int> getCacheSizeBytes() async {
     await _ensureInitialized();
     final size = await _methodChannel.invokeMethod<int>('getCacheSizeBytes', {
@@ -381,6 +389,14 @@ class FilamentController {
     await _methodChannel.invokeMethod<void>('setSkyboxFromUrl', {
       'controllerId': _controllerId,
       'url': url,
+    });
+  }
+
+  Future<void> setEnvironmentEnabled(bool enabled) async {
+    await _ensureInitialized();
+    await _methodChannel.invokeMethod<void>('setEnvironmentEnabled', {
+      'controllerId': _controllerId,
+      'enabled': enabled,
     });
   }
 

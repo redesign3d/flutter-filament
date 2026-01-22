@@ -67,6 +67,7 @@ class FilamentWidgetPlugin :
             "clearScene" -> handleClearScene(call, result)
             "loadModelFromAsset" -> handleLoadModelFromAsset(call, result)
             "loadModelFromUrl" -> handleLoadModelFromUrl(call, result)
+            "loadModelFromFile" -> handleLoadModelFromFile(call, result)
             "getCacheSizeBytes" -> handleCacheSize(call, result)
             "clearCache" -> handleClearCache(call, result)
             "setIBLFromAsset" -> handleSetIBLFromAsset(call, result)
@@ -90,6 +91,7 @@ class FilamentWidgetPlugin :
             "setMsaa" -> handleSetMsaa(call, result)
             "setDynamicResolutionEnabled" -> handleSetDynamicResolutionEnabled(call, result)
             "setToneMappingFilmic" -> handleSetToneMappingFilmic(call, result)
+            "setEnvironmentEnabled" -> handleSetEnvironmentEnabled(call, result)
             "setShadowsEnabled" -> handleSetShadowsEnabled(call, result)
             "setWireframeEnabled" -> handleSetWireframeEnabled(call, result)
             "setBoundingBoxesEnabled" -> handleSetBoundingBoxesEnabled(call, result)
@@ -240,6 +242,16 @@ class FilamentWidgetPlugin :
             return
         }
         controller.loadModelFromUrl(url, result)
+    }
+
+    private fun handleLoadModelFromFile(call: MethodCall, result: Result) {
+        val controller = resolveController(call, result) ?: return
+        val filePath = call.argument<String>("filePath")
+        if (filePath.isNullOrBlank()) {
+            result.error("filament_error", "Missing filePath.", null)
+            return
+        }
+        controller.loadModelFromFile(filePath, result)
     }
 
     private fun handleCacheSize(call: MethodCall, result: Result) {
@@ -416,6 +428,12 @@ class FilamentWidgetPlugin :
     private fun handleSetToneMappingFilmic(call: MethodCall, result: Result) {
         val controller = resolveController(call, result) ?: return
         controller.setToneMappingFilmic(result)
+    }
+
+    private fun handleSetEnvironmentEnabled(call: MethodCall, result: Result) {
+        val controller = resolveController(call, result) ?: return
+        val enabled = call.argument<Boolean>("enabled") ?: true
+        controller.setEnvironmentEnabled(enabled, result)
     }
 
     private fun handleSetShadowsEnabled(call: MethodCall, result: Result) {

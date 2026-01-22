@@ -1,6 +1,7 @@
 package com.example.filament_widget
 
 import android.content.Context
+import android.net.Uri
 import android.os.Handler
 import android.view.Surface
 import io.flutter.embedding.engine.plugins.FlutterPlugin.FlutterAssets
@@ -117,6 +118,40 @@ class FilamentControllerState(
                 }
             } catch (e: Exception) {
                 postError(result, e.message ?: "Failed to load URL.")
+            }
+        }
+    }
+
+    fun loadModelFromFile(filePath: String, result: Result) {
+        ioExecutor.execute {
+            try {
+                val file = File(filePath)
+                if (!file.exists()) {
+                    postError(result, "File not found.")
+                    return@execute
+                }
+                val buffer = readFileBuffer(file)
+                val baseDir = file.parentFile
+                renderThread.post {
+                    val current = viewer
+                    if (current == null) {
+                        postError(result, "Viewer not initialized.")
+                        return@post
+                    }
+                    val resourceUris = current.beginModelLoad(buffer)
+                    if (resourceUris == null) {
+                        postError(result, "Failed to parse glTF asset.")
+                        return@post
+                    }
+                    if (resourceUris.isEmpty() || baseDir == null) {
+                        current.finishModelLoad(emptyMap())
+                        postSuccess(result)
+                    } else {
+                        loadFileResourcesAsync(baseDir, resourceUris, current, result)
+                    }
+                }
+            } catch (e: Exception) {
+                postError(result, e.message ?: "Failed to load file.")
             }
         }
     }
@@ -402,6 +437,18 @@ class FilamentControllerState(
         }
     }
 
+    fun setEnvironmentEnabled(enabled: Boolean, result: Result) {
+        val current = viewer
+        if (current == null) {
+            result.success(null)
+            return
+        }
+        renderThread.post {
+            current.setEnvironmentEnabled(enabled)
+            postSuccess(result)
+        }
+    }
+
     fun setShadowsEnabled(enabled: Boolean, result: Result) {
         val current = viewer
         if (current == null) {
@@ -597,6 +644,41 @@ class FilamentControllerState(
                         "$baseUrl/$uri"
                     }
                     val resourceFile = cacheManager.getOrDownload(resourceUrl)
+                    resources[uri] = readFileBuffer(resourceFile)
+                }
+                renderThread.post {
+                    current.finishModelLoad(resources)
+                    postSuccess(result)
+                }
+            } catch (e: Exception) {
+                postError(result, e.message ?: "Failed to load glTF resources.")
+            }
+        }
+    }
+
+    private fun loadFileResourcesAsync(
+        baseDir: File,
+        resourceUris: List<String>,
+        current: FilamentViewer,
+        result: Result,
+    ) {
+        ioExecutor.execute {
+            try {
+                val resources = mutableMapOf<String, ByteBuffer>()
+                for (uri in resourceUris) {
+                    if (uri.startsWith("data:")) {
+                        continue
+                    }
+                    val resourceFile = when {
+                        uri.startsWith("file://") -> {
+                            val parsed = Uri.parse(uri)
+                            val path = parsed.path
+                            if (path.isNullOrEmpty()) continue
+                            File(path)
+                        }
+                        uri.startsWith("/") -> File(uri)
+                        else -> File(baseDir, uri)
+                    }
                     resources[uri] = readFileBuffer(resourceFile)
                 }
                 renderThread.post {
