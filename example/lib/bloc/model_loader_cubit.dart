@@ -24,6 +24,8 @@ const String kIblAssetPath = 'assets/envs/filament_env_ibl.ktx';
 const String kSkyboxAssetPath = 'assets/envs/filament_env_skybox.ktx';
 const String kHdriRemoteUrl =
     'https://dl.polyhaven.org/file/ph-assets/HDRIs/hdr/1k/venice_sunset_1k.hdr';
+const bool kAutoHdriSwitch =
+    bool.fromEnvironment('FILAMENT_AUTO_HDRI', defaultValue: false);
 
 enum DemoModelId {
   avocadoGlb,
@@ -112,6 +114,9 @@ class ModelLoaderState extends Equatable {
 class ModelLoaderCubit extends Cubit<ModelLoaderState> {
   ModelLoaderCubit(this._controller) : super(const ModelLoaderState.initial()) {
     unawaited(refreshCacheSize());
+    if (kAutoHdriSwitch) {
+      unawaited(_autoSwitchEnvironment());
+    }
   }
 
   final FilamentController _controller;
@@ -331,5 +336,10 @@ class ModelLoaderCubit extends Cubit<ModelLoaderState> {
         return;
       }
     }
+  }
+
+  Future<void> _autoSwitchEnvironment() async {
+    await Future<void>.delayed(const Duration(seconds: 3));
+    await setEnvironmentSource(EnvironmentSource.hdri);
   }
 }

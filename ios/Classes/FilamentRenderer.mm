@@ -49,6 +49,7 @@
 #include <unordered_set>
 #include <string>
 #include <vector>
+#include <memory>
 
 using namespace filament;
 using namespace filament::gltfio;
@@ -665,6 +666,9 @@ std::vector<uint32_t> BuildWireframeEdges(const std::vector<uint32_t>& indices, 
     Texture* _iblTexture;
     Skybox* _skybox;
     Texture* _skyboxTexture;
+    std::unique_ptr<IBLPrefilterContext> _iblPrefilterContext;
+    std::unique_ptr<IBLPrefilterContext::EquirectangularToCubemap> _iblEquirectToCubemap;
+    std::unique_ptr<IBLPrefilterContext::SpecularFilter> _iblSpecularFilter;
     math::float3 _orbitTarget;
     double _yawDeg;
     double _pitchDeg;
@@ -964,6 +968,10 @@ std::vector<uint32_t> BuildWireframeEdges(const std::vector<uint32_t>& indices, 
     if (_scene == nullptr) {
         return;
     }
+    const BOOL wasPaused = _paused;
+    _paused = YES;
+    _scene->setIndirectLight(nullptr);
+    _engine->flushAndWait();
     if (_indirectLight) {
         _engine->destroy(_indirectLight);
         _indirectLight = nullptr;
@@ -984,6 +992,7 @@ std::vector<uint32_t> BuildWireframeEdges(const std::vector<uint32_t>& indices, 
     }
     _indirectLight = builder.build(*_engine);
     _scene->setIndirectLight(_indirectLight);
+    _paused = wasPaused;
 }
 
 - (void)setSkyboxFromKTX:(NSData *)data {
@@ -991,6 +1000,10 @@ std::vector<uint32_t> BuildWireframeEdges(const std::vector<uint32_t>& indices, 
     if (_scene == nullptr) {
         return;
     }
+    const BOOL wasPaused = _paused;
+    _paused = YES;
+    _scene->setSkybox(nullptr);
+    _engine->flushAndWait();
     if (_skybox) {
         _engine->destroy(_skybox);
         _skybox = nullptr;
@@ -1004,6 +1017,7 @@ std::vector<uint32_t> BuildWireframeEdges(const std::vector<uint32_t>& indices, 
     _skyboxTexture = ktxreader::Ktx1Reader::createTexture(_engine, bundle, true);
     _skybox = Skybox::Builder().environment(_skyboxTexture).build(*_engine);
     _scene->setSkybox(_environmentEnabled ? _skybox : nullptr);
+    _paused = wasPaused;
 }
 
 - (BOOL)setHdriFromHDR:(NSData *)data error:(NSString * _Nullable * _Nullable)error {
@@ -1014,6 +1028,8 @@ std::vector<uint32_t> BuildWireframeEdges(const std::vector<uint32_t>& indices, 
         }
         return NO;
     }
+    const BOOL wasPaused = _paused;
+    _paused = YES;
     HdriImage hdrImage;
     std::string decodeError;
     const uint8_t* bytes = reinterpret_cast<const uint8_t*>(data.bytes);
@@ -1021,6 +1037,7 @@ std::vector<uint32_t> BuildWireframeEdges(const std::vector<uint32_t>& indices, 
         if (error) {
             *error = [NSString stringWithUTF8String:decodeError.c_str()];
         }
+        _paused = wasPaused;
         return NO;
     }
     image::LinearImage baseImage(hdrImage.width, hdrImage.height, 3);
@@ -1032,10 +1049,6 @@ std::vector<uint32_t> BuildWireframeEdges(const std::vector<uint32_t>& indices, 
         }
     }
     const uint32_t mipCount = image::getMipmapCount(baseImage);
-    std::vector<image::LinearImage> mipmaps(mipCount);
-    if (mipCount > 0) {
-        image::generateMipmaps(baseImage, image::Filter::DEFAULT, mipmaps.data(), mipCount);
-    }
     const uint32_t levels = mipCount + 1;
     Texture* equirect = Texture::Builder()
         .width(hdrImage.width)
@@ -1043,7 +1056,8 @@ std::vector<uint32_t> BuildWireframeEdges(const std::vector<uint32_t>& indices, 
         .levels(levels)
         .sampler(Texture::Sampler::SAMPLER_2D)
         .format(Texture::InternalFormat::R11F_G11F_B10F)
-        .usage(Texture::Usage::DEFAULT)
+        .usage(Texture::Usage::DEFAULT | Texture::Usage::BLIT_SRC | Texture::Usage::BLIT_DST |
+               Texture::Usage::GEN_MIPMAPPABLE)
         .build(*_engine);
 
     const size_t baseSize = static_cast<size_t>(hdrImage.width) * hdrImage.height * sizeof(uint32_t);
@@ -1056,26 +1070,20 @@ std::vector<uint32_t> BuildWireframeEdges(const std::vector<uint32_t>& indices, 
         ReleaseNewBuffer
     );
     equirect->setImage(*_engine, 0, std::move(baseDescriptor));
-
-    for (uint32_t level = 1; level < levels; ++level) {
-        const auto& mip = mipmaps[level - 1];
-        const size_t mipSize = static_cast<size_t>(mip.getWidth()) * mip.getHeight() * sizeof(uint32_t);
-        auto packed = image::fromLinearToRGB_10_11_11_REV(mip);
-        Texture::PixelBufferDescriptor descriptor(
-            packed.release(),
-            mipSize,
-            Texture::Format::RGB,
-            Texture::Type::UINT_10F_11F_11F_REV,
-            ReleaseNewBuffer
-        );
-        equirect->setImage(*_engine, level, std::move(descriptor));
+    if (levels > 1) {
+        equirect->generateMipmaps(*_engine);
     }
 
-    IBLPrefilterContext context(*_engine);
-    IBLPrefilterContext::EquirectangularToCubemap toCubemap(context);
-    Texture* cubemap = toCubemap(equirect, nullptr);
-    IBLPrefilterContext::SpecularFilter specularFilter(context);
-    Texture* reflections = specularFilter(cubemap, nullptr);
+    if (!_iblPrefilterContext) {
+        _iblPrefilterContext = std::make_unique<IBLPrefilterContext>(*_engine);
+        _iblEquirectToCubemap = std::make_unique<IBLPrefilterContext::EquirectangularToCubemap>(
+            *_iblPrefilterContext);
+        _iblSpecularFilter = std::make_unique<IBLPrefilterContext::SpecularFilter>(
+            *_iblPrefilterContext);
+    }
+    Texture* cubemap = (*_iblEquirectToCubemap)(equirect, nullptr);
+    Texture* reflections = (*_iblSpecularFilter)(cubemap, nullptr);
+    _engine->flushAndWait();
     _engine->destroy(equirect);
     if (cubemap == nullptr || reflections == nullptr) {
         if (cubemap) {
@@ -1087,9 +1095,13 @@ std::vector<uint32_t> BuildWireframeEdges(const std::vector<uint32_t>& indices, 
         if (error) {
             *error = @"Failed to prefilter HDRI.";
         }
+        _paused = wasPaused;
         return NO;
     }
 
+    _scene->setIndirectLight(nullptr);
+    _scene->setSkybox(nullptr);
+    _engine->flushAndWait();
     if (_indirectLight) {
         _engine->destroy(_indirectLight);
         _indirectLight = nullptr;
@@ -1117,6 +1129,7 @@ std::vector<uint32_t> BuildWireframeEdges(const std::vector<uint32_t>& indices, 
     _skyboxTexture = cubemap;
     _skybox = Skybox::Builder().environment(_skyboxTexture).build(*_engine);
     _scene->setSkybox(_environmentEnabled ? _skybox : nullptr);
+    _paused = wasPaused;
     return YES;
 }
 
@@ -1461,6 +1474,15 @@ std::vector<uint32_t> BuildWireframeEdges(const std::vector<uint32_t>& indices, 
     if (_debugLineMaterial) {
         _engine->destroy(_debugLineMaterial);
         _debugLineMaterial = nullptr;
+    }
+    if (_iblSpecularFilter) {
+        _iblSpecularFilter.reset();
+    }
+    if (_iblEquirectToCubemap) {
+        _iblEquirectToCubemap.reset();
+    }
+    if (_iblPrefilterContext) {
+        _iblPrefilterContext.reset();
     }
     if (_swapChain) {
         _engine->destroy(_swapChain);
