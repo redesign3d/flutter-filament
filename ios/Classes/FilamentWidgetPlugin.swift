@@ -60,10 +60,14 @@ public class FilamentWidgetPlugin: NSObject, FlutterPlugin, FlutterStreamHandler
       handleSetIBLFromAsset(call, result: result)
     case "setSkyboxFromAsset":
       handleSetSkyboxFromAsset(call, result: result)
+    case "setHdriFromAsset":
+      handleSetHdriFromAsset(call, result: result)
     case "setIBLFromUrl":
       handleSetIBLFromUrl(call, result: result)
     case "setSkyboxFromUrl":
       handleSetSkyboxFromUrl(call, result: result)
+    case "setHdriFromUrl":
+      handleSetHdriFromUrl(call, result: result)
     case "frameModel":
       handleFrameModel(call, result: result)
     case "setOrbitConstraints":
@@ -307,6 +311,18 @@ public class FilamentWidgetPlugin: NSObject, FlutterPlugin, FlutterStreamHandler
     controller.setSkyboxFromAsset(ktxPath: ktxPath, result: result)
   }
 
+  private func handleSetHdriFromAsset(_ call: FlutterMethodCall, result: @escaping FlutterResult) {
+    guard let controller = resolveController(call, result: result) else { return }
+    guard
+      let args = call.arguments as? [String: Any],
+      let hdrPath = args["hdrPath"] as? String
+    else {
+      result(FlutterError(code: "filament_error", message: "Missing hdrPath.", details: nil))
+      return
+    }
+    controller.setHdriFromAsset(hdrPath: hdrPath, result: result)
+  }
+
   private func handleSetIBLFromUrl(_ call: FlutterMethodCall, result: @escaping FlutterResult) {
     guard let controller = resolveController(call, result: result) else { return }
     guard
@@ -329,6 +345,18 @@ public class FilamentWidgetPlugin: NSObject, FlutterPlugin, FlutterStreamHandler
       return
     }
     controller.setSkyboxFromUrl(urlString: url, result: result)
+  }
+
+  private func handleSetHdriFromUrl(_ call: FlutterMethodCall, result: @escaping FlutterResult) {
+    guard let controller = resolveController(call, result: result) else { return }
+    guard
+      let args = call.arguments as? [String: Any],
+      let url = args["url"] as? String
+    else {
+      result(FlutterError(code: "filament_error", message: "Missing url.", details: nil))
+      return
+    }
+    controller.setHdriFromUrl(urlString: url, result: result)
   }
 
   private func handleFrameModel(_ call: FlutterMethodCall, result: @escaping FlutterResult) {

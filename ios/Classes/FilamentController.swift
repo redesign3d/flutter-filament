@@ -250,6 +250,38 @@ final class FilamentController {
     }
   }
 
+  func setHdriFromAsset(hdrPath: String, result: @escaping FlutterResult) {
+    guard let renderer else {
+      result(FlutterError(code: "filament_error", message: "Viewer not initialized.", details: nil))
+      return
+    }
+    let key = assetLookup(hdrPath)
+    guard let url = Bundle.main.url(forResource: key, withExtension: nil) else {
+      result(FlutterError(code: "filament_error", message: "Asset not found: \(hdrPath)", details: nil))
+      return
+    }
+    DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+      guard let self else { return }
+      do {
+        let data = try Data(contentsOf: url)
+        self.renderLoop.perform {
+          var message: NSString?
+          let success = renderer.setHdriFromHDR(data, error: &message)
+          DispatchQueue.main.async {
+            if success {
+              result(nil)
+            } else {
+              let errorMessage = message as String? ?? "Failed to load HDRI asset."
+              self.emitError(errorMessage, result: result)
+            }
+          }
+        }
+      } catch {
+        self.emitError("Failed to load HDRI asset: \(error.localizedDescription)", result: result)
+      }
+    }
+  }
+
   func setIBLFromUrl(urlString: String, result: @escaping FlutterResult) {
     guard let renderer else {
       result(FlutterError(code: "filament_error", message: "Viewer not initialized.", details: nil))
@@ -270,6 +302,38 @@ final class FilamentController {
         }
       } catch {
         self.emitError("Failed to load IBL URL: \(error.localizedDescription)", result: result)
+      }
+    }
+  }
+
+  func setHdriFromUrl(urlString: String, result: @escaping FlutterResult) {
+    guard let renderer else {
+      result(FlutterError(code: "filament_error", message: "Viewer not initialized.", details: nil))
+      return
+    }
+    guard let url = URL(string: urlString) else {
+      result(FlutterError(code: "filament_error", message: "Invalid URL.", details: nil))
+      return
+    }
+    DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+      guard let self else { return }
+      do {
+        let cached = try self.cacheManager.getOrDownload(url: url)
+        let data = try Data(contentsOf: cached)
+        self.renderLoop.perform {
+          var message: NSString?
+          let success = renderer.setHdriFromHDR(data, error: &message)
+          DispatchQueue.main.async {
+            if success {
+              result(nil)
+            } else {
+              let errorMessage = message as String? ?? "Failed to load HDRI URL."
+              self.emitError(errorMessage, result: result)
+            }
+          }
+        }
+      } catch {
+        self.emitError("Failed to load HDRI URL: \(error.localizedDescription)", result: result)
       }
     }
   }

@@ -27,6 +27,8 @@ import com.google.android.filament.gltfio.FilamentAsset
 import com.google.android.filament.gltfio.MaterialProvider
 import com.google.android.filament.gltfio.ResourceLoader
 import com.google.android.filament.gltfio.UbershaderProvider
+import com.google.android.filament.utils.HDRLoader
+import com.google.android.filament.utils.IBLPrefilterContext
 import com.google.android.filament.utils.KTX1Loader
 import io.flutter.view.TextureRegistry
 import java.nio.ByteBuffer
@@ -484,6 +486,42 @@ class FilamentViewer(
         skyboxCubemap?.let { engine.destroyTexture(it) }
         skybox = bundle.skybox
         skyboxCubemap = bundle.cubemap
+        scene.skybox = if (environmentEnabled) skybox else null
+    }
+
+    fun setHdriFromHdr(buffer: ByteBuffer) {
+        val hdrOptions = HDRLoader.Options().apply {
+            desiredFormat = Texture.InternalFormat.R11F_G11F_B10F
+        }
+        val hdrTexture = HDRLoader.createTexture(engine, buffer, hdrOptions)
+            ?: run {
+                eventEmitter("error", "Failed to decode HDRI texture.")
+                return
+            }
+        val iblContext = IBLPrefilterContext(engine)
+        val equirectToCubemap = IBLPrefilterContext.EquirectangularToCubemap(iblContext)
+        val cubemap = equirectToCubemap.run(hdrTexture)
+        equirectToCubemap.destroy()
+        val specularFilter = IBLPrefilterContext.SpecularFilter(iblContext)
+        val specularCubemap = specularFilter.run(cubemap)
+        specularFilter.destroy()
+        iblContext.destroy()
+        engine.destroyTexture(hdrTexture)
+
+        indirectLight?.let { engine.destroyIndirectLight(it) }
+        indirectLightCubemap?.let { engine.destroyTexture(it) }
+        skybox?.let { engine.destroySkybox(it) }
+        skyboxCubemap?.let { engine.destroyTexture(it) }
+
+        indirectLight = IndirectLight.Builder()
+            .reflections(specularCubemap)
+            .irradiance(cubemap)
+            .build(engine)
+        indirectLightCubemap = specularCubemap
+        scene.indirectLight = indirectLight
+
+        skybox = Skybox.Builder().environment(cubemap).build(engine)
+        skyboxCubemap = cubemap
         scene.skybox = if (environmentEnabled) skybox else null
     }
 

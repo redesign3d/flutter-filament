@@ -22,6 +22,8 @@ const String kRemoteMetalRoughSpheresUrl =
     'https://raw.githubusercontent.com/KhronosGroup/glTF-Sample-Models/master/2.0/MetalRoughSpheres/glTF-Binary/MetalRoughSpheres.glb';
 const String kIblAssetPath = 'assets/envs/filament_env_ibl.ktx';
 const String kSkyboxAssetPath = 'assets/envs/filament_env_skybox.ktx';
+const String kHdriRemoteUrl =
+    'https://dl.polyhaven.org/file/ph-assets/HDRIs/hdr/1k/venice_sunset_1k.hdr';
 
 enum DemoModelId {
   avocadoGlb,
@@ -36,6 +38,11 @@ enum DemoModelId {
   localFile,
 }
 
+enum EnvironmentSource {
+  ktx,
+  hdri,
+}
+
 class ModelLoaderState extends Equatable {
   const ModelLoaderState({
     required this.isLoading,
@@ -45,6 +52,7 @@ class ModelLoaderState extends Equatable {
     required this.lastLoadFromCache,
     required this.modelLoaded,
     required this.selectedModelId,
+    required this.environmentSource,
   });
 
   const ModelLoaderState.initial()
@@ -54,7 +62,8 @@ class ModelLoaderState extends Equatable {
         cacheSizeBytes = 0,
         lastLoadFromCache = false,
         modelLoaded = false,
-        selectedModelId = null;
+        selectedModelId = null,
+        environmentSource = EnvironmentSource.ktx;
 
   final bool isLoading;
   final String status;
@@ -63,6 +72,7 @@ class ModelLoaderState extends Equatable {
   final bool lastLoadFromCache;
   final bool modelLoaded;
   final DemoModelId? selectedModelId;
+  final EnvironmentSource environmentSource;
 
   ModelLoaderState copyWith({
     bool? isLoading,
@@ -72,6 +82,7 @@ class ModelLoaderState extends Equatable {
     bool? lastLoadFromCache,
     bool? modelLoaded,
     DemoModelId? selectedModelId,
+    EnvironmentSource? environmentSource,
   }) {
     return ModelLoaderState(
       isLoading: isLoading ?? this.isLoading,
@@ -81,6 +92,7 @@ class ModelLoaderState extends Equatable {
       lastLoadFromCache: lastLoadFromCache ?? this.lastLoadFromCache,
       modelLoaded: modelLoaded ?? this.modelLoaded,
       selectedModelId: selectedModelId ?? this.selectedModelId,
+      environmentSource: environmentSource ?? this.environmentSource,
     );
   }
 
@@ -93,6 +105,7 @@ class ModelLoaderState extends Equatable {
         lastLoadFromCache,
         modelLoaded,
         selectedModelId,
+        environmentSource,
       ];
 }
 
@@ -189,6 +202,32 @@ class ModelLoaderCubit extends Cubit<ModelLoaderState> {
     );
   }
 
+  Future<void> setEnvironmentSource(EnvironmentSource source) async {
+    emit(
+      state.copyWith(
+        isLoading: true,
+        status: source == EnvironmentSource.hdri
+            ? 'Loading HDRI environment...'
+            : 'Loading KTX environment...',
+        errorMessage: null,
+        environmentSource: source,
+      ),
+    );
+    try {
+      await _ensureViewerReady();
+      await _applyEnvironment();
+      emit(state.copyWith(isLoading: false, status: 'Environment updated.'));
+    } catch (e) {
+      emit(
+        state.copyWith(
+          isLoading: false,
+          status: 'Environment load failed.',
+          errorMessage: e.toString(),
+        ),
+      );
+    }
+  }
+
   Future<void> clearCache() async {
     emit(state.copyWith(isLoading: true, status: 'Clearing cache...'));
     try {
@@ -262,8 +301,12 @@ class ModelLoaderCubit extends Cubit<ModelLoaderState> {
   }
 
   Future<void> _applyEnvironment() async {
-    await _controller.setIBLFromAsset(kIblAssetPath);
-    await _controller.setSkyboxFromAsset(kSkyboxAssetPath);
+    if (state.environmentSource == EnvironmentSource.hdri) {
+      await _controller.setHdriFromUrl(kHdriRemoteUrl);
+    } else {
+      await _controller.setIBLFromAsset(kIblAssetPath);
+      await _controller.setSkyboxFromAsset(kSkyboxAssetPath);
+    }
   }
 
   Future<void> _applyViewDefaults() async {

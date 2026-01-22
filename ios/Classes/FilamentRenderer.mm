@@ -7,6 +7,8 @@
 #include <backend/BufferDescriptor.h>
 #include <algorithm>
 #include <cmath>
+#include <cstdio>
+#include <cstring>
 #include <functional>
 #include <filament/Camera.h>
 #include <filament/Box.h>
@@ -27,6 +29,7 @@
 #include <filament/VertexBuffer.h>
 #include <filament/View.h>
 #include <filament/Viewport.h>
+#include <filament-iblprefilter/IBLPrefilterContext.h>
 #include <gltfio/Animator.h>
 #include <gltfio/AssetLoader.h>
 #include <gltfio/FilamentAsset.h>
@@ -34,7 +37,10 @@
 #include <gltfio/ResourceLoader.h>
 #include <gltfio/TextureProvider.h>
 #include <gltfio/materials/uberarchive.h>
+#include <image/ColorTransform.h>
+#include <image/ImageSampler.h>
 #include <image/Ktx1Bundle.h>
+#include <image/LinearImage.h>
 #include <ktxreader/Ktx1Reader.h>
 #include <math/vec3.h>
 #include "utils/JobSystem.h"
@@ -68,6 +74,10 @@ void ReleaseBuffer(void* buffer, size_t, void*) {
     free(buffer);
 }
 
+void ReleaseNewBuffer(void* buffer, size_t, void*) {
+    delete[] static_cast<uint8_t*>(buffer);
+}
+
 double ClampValue(double value, double minValue, double maxValue) {
     return std::max(minValue, std::min(value, maxValue));
 }
@@ -89,6 +99,162 @@ void EnsureJobSystemAdopted(Engine* engine) {
         engine->getJobSystem().adopt();
         adopted = true;
     }
+}
+
+struct HdriImage {
+    uint32_t width = 0;
+    uint32_t height = 0;
+    std::vector<math::float3> pixels;
+};
+
+bool ReadHdrLine(const uint8_t* data, size_t length, size_t& offset, std::string& line) {
+    line.clear();
+    while (offset < length) {
+        const char c = static_cast<char>(data[offset++]);
+        if (c == '\n') {
+            return true;
+        }
+        if (c == '\r') {
+            continue;
+        }
+        line.push_back(c);
+    }
+    return !line.empty();
+}
+
+math::float3 RgbeToFloat(uint8_t r, uint8_t g, uint8_t b, uint8_t e) {
+    if (e == 0) {
+        return {0.0f, 0.0f, 0.0f};
+    }
+    const float scale = std::ldexp(1.0f, int(e) - 136);
+    return {
+        (static_cast<float>(r) + 0.5f) * scale,
+        (static_cast<float>(g) + 0.5f) * scale,
+        (static_cast<float>(b) + 0.5f) * scale,
+    };
+}
+
+bool DecodeRadianceHdr(const uint8_t* data, size_t length, HdriImage& out, std::string& error) {
+    size_t offset = 0;
+    std::string line;
+    bool formatOk = false;
+    while (ReadHdrLine(data, length, offset, line)) {
+        if (line.empty()) {
+            break;
+        }
+        if (line.rfind("FORMAT=", 0) == 0) {
+            if (line.find("32-bit_rle_rgbe") != std::string::npos) {
+                formatOk = true;
+            }
+        }
+    }
+    if (!formatOk) {
+        error = "Unsupported HDR format.";
+        return false;
+    }
+    if (!ReadHdrLine(data, length, offset, line)) {
+        error = "Missing HDR resolution line.";
+        return false;
+    }
+    int width = 0;
+    int height = 0;
+    char ySign = 0;
+    char xSign = 0;
+    if (std::sscanf(line.c_str(), "%cY %d %cX %d", &ySign, &height, &xSign, &width) != 4) {
+        error = "Invalid HDR resolution line.";
+        return false;
+    }
+    if (width <= 0 || height <= 0) {
+        error = "Invalid HDR dimensions.";
+        return false;
+    }
+    out.width = static_cast<uint32_t>(width);
+    out.height = static_cast<uint32_t>(height);
+    out.pixels.resize(static_cast<size_t>(width) * static_cast<size_t>(height));
+
+    const size_t totalPixels = static_cast<size_t>(width) * static_cast<size_t>(height);
+    const size_t scanlineBytes = static_cast<size_t>(width) * 4;
+    std::vector<uint8_t> scanline(scanlineBytes);
+
+    for (int y = 0; y < height; ++y) {
+        if (offset + 4 > length) {
+            error = "Unexpected HDR EOF.";
+            return false;
+        }
+        const uint8_t b0 = data[offset++];
+        const uint8_t b1 = data[offset++];
+        const uint8_t b2 = data[offset++];
+        const uint8_t b3 = data[offset++];
+        if (width < 8 || width > 0x7fff || b0 != 2 || b1 != 2 || (b2 & 0x80) != 0) {
+            scanline[0] = b0;
+            scanline[1] = b1;
+            scanline[2] = b2;
+            scanline[3] = b3;
+            const size_t remaining = scanlineBytes - 4;
+            if (offset + remaining > length) {
+                error = "Unexpected HDR EOF.";
+                return false;
+            }
+            std::memcpy(scanline.data() + 4, data + offset, remaining);
+            offset += remaining;
+            for (int x = 0; x < width; ++x) {
+                const size_t idx = static_cast<size_t>(y) * width + x;
+                const uint8_t r = scanline[x * 4];
+                const uint8_t g = scanline[x * 4 + 1];
+                const uint8_t b = scanline[x * 4 + 2];
+                const uint8_t e = scanline[x * 4 + 3];
+                out.pixels[idx] = RgbeToFloat(r, g, b, e);
+            }
+            continue;
+        }
+        const int encodedWidth = (static_cast<int>(b2) << 8) | static_cast<int>(b3);
+        if (encodedWidth != width) {
+            error = "HDR scanline width mismatch.";
+            return false;
+        }
+        for (int channel = 0; channel < 4; ++channel) {
+            int x = 0;
+            while (x < width) {
+                if (offset >= length) {
+                    error = "Unexpected HDR EOF.";
+                    return false;
+                }
+                uint8_t count = data[offset++];
+                if (count > 128) {
+                    count -= 128;
+                    if (offset >= length) {
+                        error = "Unexpected HDR EOF.";
+                        return false;
+                    }
+                    const uint8_t value = data[offset++];
+                    for (int i = 0; i < count && x < width; ++i, ++x) {
+                        scanline[static_cast<size_t>(channel) * width + x] = value;
+                    }
+                } else {
+                    for (int i = 0; i < count && x < width; ++i, ++x) {
+                        if (offset >= length) {
+                            error = "Unexpected HDR EOF.";
+                            return false;
+                        }
+                        scanline[static_cast<size_t>(channel) * width + x] = data[offset++];
+                    }
+                }
+            }
+        }
+        for (int x = 0; x < width; ++x) {
+            const size_t idx = static_cast<size_t>(y) * width + x;
+            const uint8_t r = scanline[x];
+            const uint8_t g = scanline[static_cast<size_t>(width) + x];
+            const uint8_t b = scanline[static_cast<size_t>(width) * 2 + x];
+            const uint8_t e = scanline[static_cast<size_t>(width) * 3 + x];
+            out.pixels[idx] = RgbeToFloat(r, g, b, e);
+        }
+    }
+    if (out.pixels.size() != totalPixels) {
+        error = "HDR decode size mismatch.";
+        return false;
+    }
+    return true;
 }
 
 struct Matrix4 {
@@ -834,6 +1000,108 @@ std::vector<uint32_t> BuildWireframeEdges(const std::vector<uint32_t>& indices, 
     _skyboxTexture = ktxreader::Ktx1Reader::createTexture(_engine, bundle, true);
     _skybox = Skybox::Builder().environment(_skyboxTexture).build(*_engine);
     _scene->setSkybox(_environmentEnabled ? _skybox : nullptr);
+}
+
+- (BOOL)setHdriFromHDR:(NSData *)data error:(NSString * _Nullable * _Nullable)error {
+    EnsureJobSystemAdopted(_engine);
+    if (_scene == nullptr) {
+        if (error) {
+            *error = @"Scene not initialized.";
+        }
+        return NO;
+    }
+    HdriImage hdrImage;
+    std::string decodeError;
+    const uint8_t* bytes = reinterpret_cast<const uint8_t*>(data.bytes);
+    if (!DecodeRadianceHdr(bytes, data.length, hdrImage, decodeError)) {
+        if (error) {
+            *error = [NSString stringWithUTF8String:decodeError.c_str()];
+        }
+        return NO;
+    }
+    image::LinearImage baseImage(hdrImage.width, hdrImage.height, 3);
+    for (uint32_t y = 0; y < hdrImage.height; ++y) {
+        for (uint32_t x = 0; x < hdrImage.width; ++x) {
+            const size_t idx = static_cast<size_t>(y) * hdrImage.width + x;
+            auto* pixel = baseImage.get<math::float3>(x, y);
+            *pixel = hdrImage.pixels[idx];
+        }
+    }
+    const uint32_t mipCount = image::getMipmapCount(baseImage);
+    std::vector<image::LinearImage> mipmaps(mipCount);
+    if (mipCount > 0) {
+        image::generateMipmaps(baseImage, image::Filter::DEFAULT, mipmaps.data(), mipCount);
+    }
+    const uint32_t levels = mipCount + 1;
+    Texture* equirect = Texture::Builder()
+        .width(hdrImage.width)
+        .height(hdrImage.height)
+        .levels(levels)
+        .sampler(Texture::Sampler::SAMPLER_2D)
+        .format(Texture::InternalFormat::R11F_G11F_B10F)
+        .usage(Texture::Usage::SAMPLEABLE)
+        .build(*_engine);
+
+    const size_t baseSize = static_cast<size_t>(hdrImage.width) * hdrImage.height * sizeof(uint32_t);
+    auto basePacked = image::fromLinearToRGB_10_11_11_REV(baseImage);
+    Texture::PixelBufferDescriptor baseDescriptor(
+        basePacked.release(),
+        baseSize,
+        Texture::Format::RGB,
+        Texture::Type::UINT_10F_11F_11F_REV,
+        ReleaseNewBuffer
+    );
+    equirect->setImage(*_engine, 0, std::move(baseDescriptor));
+
+    for (uint32_t level = 1; level < levels; ++level) {
+        const auto& mip = mipmaps[level - 1];
+        const size_t mipSize = static_cast<size_t>(mip.getWidth()) * mip.getHeight() * sizeof(uint32_t);
+        auto packed = image::fromLinearToRGB_10_11_11_REV(mip);
+        Texture::PixelBufferDescriptor descriptor(
+            packed.release(),
+            mipSize,
+            Texture::Format::RGB,
+            Texture::Type::UINT_10F_11F_11F_REV,
+            ReleaseNewBuffer
+        );
+        equirect->setImage(*_engine, level, std::move(descriptor));
+    }
+
+    IBLPrefilterContext context(*_engine);
+    IBLPrefilterContext::EquirectangularToCubemap toCubemap(context);
+    Texture* cubemap = toCubemap(equirect, nullptr);
+    IBLPrefilterContext::SpecularFilter specularFilter(context);
+    Texture* reflections = specularFilter(cubemap, nullptr);
+    _engine->destroy(equirect);
+
+    if (_indirectLight) {
+        _engine->destroy(_indirectLight);
+        _indirectLight = nullptr;
+    }
+    if (_iblTexture) {
+        _engine->destroy(_iblTexture);
+        _iblTexture = nullptr;
+    }
+    if (_skybox) {
+        _engine->destroy(_skybox);
+        _skybox = nullptr;
+    }
+    if (_skyboxTexture) {
+        _engine->destroy(_skyboxTexture);
+        _skyboxTexture = nullptr;
+    }
+
+    IndirectLight::Builder builder;
+    builder.reflections(reflections);
+    builder.irradiance(cubemap);
+    _indirectLight = builder.build(*_engine);
+    _iblTexture = reflections;
+    _scene->setIndirectLight(_indirectLight);
+
+    _skyboxTexture = cubemap;
+    _skybox = Skybox::Builder().environment(_skyboxTexture).build(*_engine);
+    _scene->setSkybox(_environmentEnabled ? _skybox : nullptr);
+    return YES;
 }
 
 - (void)frameModel:(BOOL)useWorldOrigin {

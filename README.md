@@ -8,6 +8,7 @@ Android and iOS using the texture rendering path (no PlatformView).
 - Flutter asset and remote URL loading with deterministic caching
 - Orbit camera with constraints, inertia, and zoom limits
 - IBL + skybox environment lighting
+- HDRI environment loading (equirectangular .hdr)
 - Animation playback (play/pause/seek/speed)
 - Quality controls: MSAA, dynamic resolution, filmic tone mapping, shadows
 - Dev tools: FPS overlay, wireframe, bounding boxes, debug logging
@@ -53,6 +54,8 @@ Widget build(BuildContext context) {
 Future<void> load() async {
   await controller.setIBLFromAsset('assets/envs/filament_env_ibl.ktx');
   await controller.setSkyboxFromAsset('assets/envs/filament_env_skybox.ktx');
+  // Or use an HDRI (equirectangular .hdr):
+  // await controller.setHdriFromUrl('https://dl.polyhaven.org/file/ph-assets/HDRIs/hdr/1k/venice_sunset_1k.hdr');
   await controller.loadModelFromAsset('assets/models/Avocado.glb');
   await controller.frameModel();
 }
@@ -83,6 +86,8 @@ Models used:
 - `2.0/BoomBox/glTF/BoomBox.gltf` (+ bin + textures, CC0, see model README)
 - Remote URL: `2.0/BoxTextured/glTF-Binary/BoxTextured.glb`
   (CC-BY 4.0, see model README)
+- HDRI: Poly Haven `venice_sunset_1k.hdr` (CC0)
+  https://polyhaven.com/a/venice_sunset
 
 ## Troubleshooting
 - Missing Filament artifacts: re-run the tooling scripts in `tooling/`.

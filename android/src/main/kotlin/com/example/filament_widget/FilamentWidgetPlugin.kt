@@ -72,8 +72,10 @@ class FilamentWidgetPlugin :
             "clearCache" -> handleClearCache(call, result)
             "setIBLFromAsset" -> handleSetIBLFromAsset(call, result)
             "setSkyboxFromAsset" -> handleSetSkyboxFromAsset(call, result)
+            "setHdriFromAsset" -> handleSetHdriFromAsset(call, result)
             "setIBLFromUrl" -> handleSetIBLFromUrl(call, result)
             "setSkyboxFromUrl" -> handleSetSkyboxFromUrl(call, result)
+            "setHdriFromUrl" -> handleSetHdriFromUrl(call, result)
             "frameModel" -> handleFrameModel(call, result)
             "setOrbitConstraints" -> handleOrbitConstraints(call, result)
             "setInertiaEnabled" -> handleInertiaEnabled(call, result)
@@ -284,6 +286,16 @@ class FilamentWidgetPlugin :
         controller.setSkyboxFromAsset(assetPath, result)
     }
 
+    private fun handleSetHdriFromAsset(call: MethodCall, result: Result) {
+        val controller = resolveController(call, result) ?: return
+        val assetPath = call.argument<String>("hdrPath")
+        if (assetPath.isNullOrBlank()) {
+            result.error("filament_error", "Missing hdrPath.", null)
+            return
+        }
+        controller.setHdriFromAsset(assetPath, result)
+    }
+
     private fun handleSetIBLFromUrl(call: MethodCall, result: Result) {
         val controller = resolveController(call, result) ?: return
         val url = call.argument<String>("url")
@@ -302,6 +314,16 @@ class FilamentWidgetPlugin :
             return
         }
         controller.setSkyboxFromUrl(url, result)
+    }
+
+    private fun handleSetHdriFromUrl(call: MethodCall, result: Result) {
+        val controller = resolveController(call, result) ?: return
+        val url = call.argument<String>("url")
+        if (url.isNullOrBlank()) {
+            result.error("filament_error", "Missing url.", null)
+            return
+        }
+        controller.setHdriFromUrl(url, result)
     }
 
     private fun handleFrameModel(call: MethodCall, result: Result) {

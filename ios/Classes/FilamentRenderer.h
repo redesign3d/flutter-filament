@@ -24,6 +24,8 @@ typedef void (^FilamentFrameCallback)(void);
 
 - (void)setSkyboxFromKTX:(NSData *)data;
 
+- (BOOL)setHdriFromHDR:(NSData *)data error:(NSString * _Nullable * _Nullable)error;
+
 - (void)frameModel:(BOOL)useWorldOrigin;
 
 - (void)setOrbitConstraintsWithMinPitch:(double)minPitch

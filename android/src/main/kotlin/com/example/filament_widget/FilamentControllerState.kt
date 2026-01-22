@@ -186,6 +186,25 @@ class FilamentControllerState(
         }
     }
 
+    fun setHdriFromAsset(assetPath: String, result: Result) {
+        val resolvedPath = flutterAssets.getAssetFilePathByName(assetPath)
+        ioExecutor.execute {
+            try {
+                val buffer = readAssetBuffer(resolvedPath)
+                renderThread.post {
+                    try {
+                        viewer?.setHdriFromHdr(buffer)
+                        postSuccess(result)
+                    } catch (e: Exception) {
+                        postError(result, e.message ?: "Failed to load HDRI asset.")
+                    }
+                }
+            } catch (e: Exception) {
+                postError(result, e.message ?: "Failed to load HDRI asset.")
+            }
+        }
+    }
+
     fun setIBLFromUrl(url: String, result: Result) {
         ioExecutor.execute {
             try {
@@ -212,6 +231,25 @@ class FilamentControllerState(
                 }
             } catch (e: Exception) {
                 postError(result, e.message ?: "Failed to load skybox URL.")
+            }
+        }
+    }
+
+    fun setHdriFromUrl(url: String, result: Result) {
+        ioExecutor.execute {
+            try {
+                val file = cacheManager.getOrDownload(url)
+                val buffer = readFileBuffer(file)
+                renderThread.post {
+                    try {
+                        viewer?.setHdriFromHdr(buffer)
+                        postSuccess(result)
+                    } catch (e: Exception) {
+                        postError(result, e.message ?: "Failed to load HDRI URL.")
+                    }
+                }
+            } catch (e: Exception) {
+                postError(result, e.message ?: "Failed to load HDRI URL.")
             }
         }
     }

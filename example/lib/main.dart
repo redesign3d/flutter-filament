@@ -197,6 +197,8 @@ class _ControlPanel extends StatelessWidget {
         children: const [
           _ModelSection(),
           SizedBox(height: 16),
+          _EnvironmentSection(),
+          SizedBox(height: 16),
           _AnimationSection(),
           SizedBox(height: 16),
           _SettingsSection(),
@@ -367,6 +369,57 @@ class _ModelSection extends StatelessWidget {
                     child: const Text('Clear cache'),
                   ),
                 ],
+              ),
+            ],
+          );
+        },
+      ),
+    );
+  }
+}
+
+class _EnvironmentSection extends StatelessWidget {
+  const _EnvironmentSection();
+
+  @override
+  Widget build(BuildContext context) {
+    return SectionCard(
+      title: 'Environment Source',
+      child: BlocBuilder<ModelLoaderCubit, ModelLoaderState>(
+        builder: (context, state) {
+          final cubit = context.read<ModelLoaderCubit>();
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Choose the lighting environment used for IBL and skybox.',
+                style: Theme.of(context).textTheme.bodySmall,
+              ),
+              const SizedBox(height: 12),
+              SegmentedButton<EnvironmentSource>(
+                segments: const [
+                  ButtonSegment(
+                    value: EnvironmentSource.ktx,
+                    label: Text('KTX (Local)'),
+                  ),
+                  ButtonSegment(
+                    value: EnvironmentSource.hdri,
+                    label: Text('HDRI (Remote)'),
+                  ),
+                ],
+                selected: {state.environmentSource},
+                onSelectionChanged: state.isLoading
+                    ? null
+                    : (selection) {
+                        cubit.setEnvironmentSource(selection.first);
+                      },
+              ),
+              const SizedBox(height: 8),
+              Text(
+                state.environmentSource == EnvironmentSource.hdri
+                    ? 'HDRI downloads once and uses the cache afterward.'
+                    : 'Using prefiltered KTX IBL + skybox assets.',
+                style: Theme.of(context).textTheme.bodySmall,
               ),
             ],
           );

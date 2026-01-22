@@ -376,6 +376,14 @@ class FilamentController {
     });
   }
 
+  Future<void> setHdriFromAsset(String hdrPath) async {
+    await _ensureInitialized();
+    await _methodChannel.invokeMethod<void>('setHdriFromAsset', {
+      'controllerId': _controllerId,
+      'hdrPath': hdrPath,
+    });
+  }
+
   Future<void> setIBLFromUrl(String url) async {
     await _ensureInitialized();
     await _methodChannel.invokeMethod<void>('setIBLFromUrl', {
@@ -387,6 +395,14 @@ class FilamentController {
   Future<void> setSkyboxFromUrl(String url) async {
     await _ensureInitialized();
     await _methodChannel.invokeMethod<void>('setSkyboxFromUrl', {
+      'controllerId': _controllerId,
+      'url': url,
+    });
+  }
+
+  Future<void> setHdriFromUrl(String url) async {
+    await _ensureInitialized();
+    await _methodChannel.invokeMethod<void>('setHdriFromUrl', {
       'controllerId': _controllerId,
       'url': url,
     });
