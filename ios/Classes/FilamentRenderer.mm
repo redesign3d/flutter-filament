@@ -168,6 +168,10 @@ bool DecodeRadianceHdr(const uint8_t* data, size_t length, HdriImage& out, std::
         error = "Invalid HDR dimensions.";
         return false;
     }
+    if (width != height * 2) {
+        error = "HDRI must be equirectangular (width = 2 * height).";
+        return false;
+    }
     out.width = static_cast<uint32_t>(width);
     out.height = static_cast<uint32_t>(height);
     out.pixels.resize(static_cast<size_t>(width) * static_cast<size_t>(height));
@@ -1039,7 +1043,7 @@ std::vector<uint32_t> BuildWireframeEdges(const std::vector<uint32_t>& indices, 
         .levels(levels)
         .sampler(Texture::Sampler::SAMPLER_2D)
         .format(Texture::InternalFormat::R11F_G11F_B10F)
-        .usage(Texture::Usage::SAMPLEABLE)
+        .usage(Texture::Usage::DEFAULT)
         .build(*_engine);
 
     const size_t baseSize = static_cast<size_t>(hdrImage.width) * hdrImage.height * sizeof(uint32_t);
@@ -1073,6 +1077,18 @@ std::vector<uint32_t> BuildWireframeEdges(const std::vector<uint32_t>& indices, 
     IBLPrefilterContext::SpecularFilter specularFilter(context);
     Texture* reflections = specularFilter(cubemap, nullptr);
     _engine->destroy(equirect);
+    if (cubemap == nullptr || reflections == nullptr) {
+        if (cubemap) {
+            _engine->destroy(cubemap);
+        }
+        if (reflections) {
+            _engine->destroy(reflections);
+        }
+        if (error) {
+            *error = @"Failed to prefilter HDRI.";
+        }
+        return NO;
+    }
 
     if (_indirectLight) {
         _engine->destroy(_indirectLight);
