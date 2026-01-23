@@ -31,10 +31,17 @@ class FilamentCacheManager(private val rootDir: File) {
         if (target.exists()) {
             return target
         }
-        val connection = URL(url).openConnection()
+        val connection = URL(url).openConnection() as java.net.HttpURLConnection
         connection.connectTimeout = 15000
         connection.readTimeout = 20000
-        connection.getInputStream().use { input ->
+        connection.instanceFollowRedirects = true
+        connection.connect()
+
+        if (connection.responseCode !in 200..299) {
+            throw java.io.IOException("Failed to download file: HTTP ${connection.responseCode}")
+        }
+
+        connection.inputStream.use { input ->
             FileOutputStream(target).use { output ->
                 input.copyTo(output)
             }

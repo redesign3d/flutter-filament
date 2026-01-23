@@ -254,19 +254,26 @@ class FilamentController {
       StreamController<FilamentEvent>.broadcast();
 
   final ValueNotifier<double> fps = ValueNotifier<double>(0.0);
+  final Completer<void> _viewerReadyCompleter = Completer<void>();
 
   int? get textureId => _textureId;
 
   Stream<FilamentEvent> get events => _eventController.stream;
+  Future<void> get onViewerReady => _viewerReadyCompleter.future;
 
   Future<void> initialize() async {
-    if (_initialized || _disposed) {
+    if (_disposed) {
+      throw StateError('FilamentController is disposed');
+    }
+    if (_initialized) {
       return;
     }
     _controllerId = _nextId++;
     await _methodChannel.invokeMethod<void>('createController', {
       'controllerId': _controllerId,
     });
+    if (_disposed) return; // check again after await
+
     _eventSub = _eventChannel
         .receiveBroadcastStream({'controllerId': _controllerId}).listen(
             _handleEvent,
@@ -280,9 +287,13 @@ class FilamentController {
     }
     _disposed = true;
     await _eventSub?.cancel();
-    await _methodChannel.invokeMethod<void>('disposeController', {
-      'controllerId': _controllerId,
-    });
+    _eventSub = null;
+    
+    if (_initialized) {
+      await _methodChannel.invokeMethod<void>('disposeController', {
+        'controllerId': _controllerId,
+      });
+    }
     await _eventController.close();
   }
 
@@ -291,7 +302,10 @@ class FilamentController {
     required int heightPx,
     required double devicePixelRatio,
   }) async {
+    if (_disposed) return;
     await _ensureInitialized();
+    if (_disposed) return;
+
     final textureId = await _methodChannel.invokeMethod<int>('createViewer', {
       'controllerId': _controllerId,
       'width': widthPx,
@@ -299,6 +313,9 @@ class FilamentController {
       'dpr': devicePixelRatio,
     });
     _textureId = textureId;
+    if (!_viewerReadyCompleter.isCompleted) {
+      _viewerReadyCompleter.complete();
+    }
   }
 
   Future<void> resize(int widthPx, int heightPx, double dpr) async {

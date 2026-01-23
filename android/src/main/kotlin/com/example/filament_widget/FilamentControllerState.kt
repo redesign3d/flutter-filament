@@ -23,6 +23,7 @@ class FilamentControllerState(
     private val cacheManager: FilamentCacheManager,
     private val eventEmitter: (String, String) -> Unit,
 ) {
+    @Volatile
     private var viewer: FilamentViewer? = null
 
     fun createViewer(width: Int, height: Int, result: Result) {
@@ -71,7 +72,7 @@ class FilamentControllerState(
                 renderThread.post {
                     val current = viewer
                     if (current == null) {
-                        postError(result, "Viewer not initialized.")
+                        // Viewer disposed while loading
                         return@post
                     }
                     val resourceUris = current.beginModelLoad(buffer)
@@ -101,7 +102,7 @@ class FilamentControllerState(
                 renderThread.post {
                     val current = viewer
                     if (current == null) {
-                        postError(result, "Viewer not initialized.")
+                         // Viewer disposed while loading
                         return@post
                     }
                     val resourceUris = current.beginModelLoad(buffer)
@@ -135,7 +136,7 @@ class FilamentControllerState(
                 renderThread.post {
                     val current = viewer
                     if (current == null) {
-                        postError(result, "Viewer not initialized.")
+                         // Viewer disposed while loading
                         return@post
                     }
                     val resourceUris = current.beginModelLoad(buffer)

@@ -39,8 +39,7 @@ final class FilamentCacheManager {
     if FileManager.default.fileExists(atPath: target.path) {
       return target
     }
-    let data = try Data(contentsOf: url)
-    try data.write(to: target, options: .atomic)
+    try download(from: url, to: target)
     return target
   }
 
@@ -53,9 +52,53 @@ final class FilamentCacheManager {
     if FileManager.default.fileExists(atPath: target.path) {
       return target
     }
-    let data = try Data(contentsOf: url)
-    try data.write(to: target, options: .atomic)
+    try download(from: url, to: target)
     return target
+  }
+
+  private func download(from url: URL, to target: URL) throws {
+    let semaphore = DispatchSemaphore(value: 0)
+    var downloadError: Error?
+    
+    let task = URLSession.shared.downloadTask(with: url) { localURL, response, error in
+      defer { semaphore.signal() }
+      
+      if let error = error {
+        downloadError = error
+        return
+      }
+      
+      guard let httpResponse = response as? HTTPURLResponse else {
+        downloadError = NSError(domain: "FilamentCacheManager", code: -1, userInfo: [NSLocalizedDescriptionKey: "Invalid response"])
+        return
+      }
+      
+      guard (200...299).contains(httpResponse.statusCode) else {
+        downloadError = NSError(domain: "FilamentCacheManager", code: httpResponse.statusCode, userInfo: [NSLocalizedDescriptionKey: "HTTP Error \(httpResponse.statusCode)"])
+        return
+      }
+      
+      guard let localURL = localURL else {
+        downloadError = NSError(domain: "FilamentCacheManager", code: -1, userInfo: [NSLocalizedDescriptionKey: "No data received"])
+        return
+      }
+      
+      do {
+        if FileManager.default.fileExists(atPath: target.path) {
+          try FileManager.default.removeItem(at: target)
+        }
+        try FileManager.default.moveItem(at: localURL, to: target)
+      } catch {
+        downloadError = error
+      }
+    }
+    
+    task.resume()
+    semaphore.wait()
+    
+    if let error = downloadError {
+      throw error
+    }
   }
 
   func modelCacheDirectory(for url: URL) throws -> URL {

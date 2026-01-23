@@ -29,6 +29,13 @@ final class FilamentController {
     self.eventEmitter = eventEmitter
   }
 
+  deinit {
+    // Ensure cleanup if dispose wasn't called explicitly
+    if renderer != nil {
+      dispose(result: { _ in })
+    }
+  }
+
   func createViewer(width: Int, height: Int, result: @escaping FlutterResult) {
     let clampedWidth = max(1, width)
     let clampedHeight = max(1, height)

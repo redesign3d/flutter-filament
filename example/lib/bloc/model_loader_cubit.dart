@@ -27,6 +27,15 @@ const String kHdriRemoteUrl =
 const bool kAutoHdriSwitch =
     bool.fromEnvironment('FILAMENT_AUTO_HDRI', defaultValue: false);
 
+const double kOrbitMinPitch = -80.0;
+const double kOrbitMaxPitch = 80.0;
+const double kOrbitMinYaw = -180.0;
+const double kOrbitMaxYaw = 180.0;
+const double kZoomMinDistance = 0.02;
+const double kZoomMaxDistance = 10.0;
+const double kInertiaDamping = 0.9;
+const double kInertiaSensitivity = 0.2;
+
 enum DemoModelId {
   avocadoGlb,
   boomBoxGltf,
@@ -316,26 +325,24 @@ class ModelLoaderCubit extends Cubit<ModelLoaderState> {
 
   Future<void> _applyViewDefaults() async {
     await _controller.setOrbitConstraints(
-      minPitchDeg: -80,
-      maxPitchDeg: 80,
-      minYawDeg: -180,
-      maxYawDeg: 180,
+      minPitchDeg: kOrbitMinPitch,
+      maxPitchDeg: kOrbitMaxPitch,
+      minYawDeg: kOrbitMinYaw,
+      maxYawDeg: kOrbitMaxYaw,
     );
     await _controller.setInertiaEnabled(true);
-    await _controller.setInertiaParams(damping: 0.9, sensitivity: 0.2);
-    await _controller.setZoomLimits(minDistance: 0.02, maxDistance: 10.0);
+    await _controller.setInertiaParams(
+      damping: kInertiaDamping,
+      sensitivity: kInertiaSensitivity,
+    );
+    await _controller.setZoomLimits(
+      minDistance: kZoomMinDistance,
+      maxDistance: kZoomMaxDistance,
+    );
   }
 
   Future<void> _ensureViewerReady() async {
-    if (_controller.textureId != null) {
-      return;
-    }
-    for (var i = 0; i < 60; i++) {
-      await Future<void>.delayed(const Duration(milliseconds: 50));
-      if (_controller.textureId != null) {
-        return;
-      }
-    }
+    await _controller.onViewerReady.timeout(const Duration(seconds: 10));
   }
 
   Future<void> _autoSwitchEnvironment() async {

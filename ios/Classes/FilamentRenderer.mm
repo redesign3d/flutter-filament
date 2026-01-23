@@ -1397,10 +1397,10 @@ std::vector<uint32_t> BuildWireframeEdges(const std::vector<uint32_t>& indices, 
 
 - (void)renderFrame:(uint64_t)frameTimeNanos {
     EnsureJobSystemAdopted(_engine);
-    if (_paused) {
+    if (_paused || _renderer == nullptr) {
         return;
     }
-    if (_renderer == nullptr || _swapChain == nullptr) {
+    if (_swapChain == nullptr) {
         return;
     }
     [self updateAnimation:frameTimeNanos];

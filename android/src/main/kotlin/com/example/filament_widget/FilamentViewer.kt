@@ -204,6 +204,9 @@ class FilamentViewer(
             assetLoader?.destroyAsset(asset)
         }
         filamentAsset = null
+        pendingAsset?.let { asset ->
+            assetLoader?.destroyAsset(asset)
+        }
         pendingAsset = null
         pendingModelData = null
         animator = null
