@@ -261,10 +261,55 @@ class FilamentController {
   final ValueNotifier<double> fps = ValueNotifier<double>(0.0);
   final Completer<void> _viewerReadyCompleter = Completer<void>();
 
+  // Gesture throttling state
+  double _pendingOrbitX = 0;
+  double _pendingOrbitY = 0;
+  double _pendingZoomScale = 1.0;
+  bool _isFrameCallbackScheduled = false;
+
   int? get textureId => _textureId;
 
   Stream<FilamentEvent> get events => _eventController.stream;
   Future<void> get onViewerReady => _viewerReadyCompleter.future;
+
+  void _scheduleGestureFlush() {
+    if (_isFrameCallbackScheduled) {
+      return;
+    }
+    _isFrameCallbackScheduled = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _flushGestureDeltas();
+    });
+  }
+
+  Future<void> _flushGestureDeltas() async {
+    _isFrameCallbackScheduled = false;
+
+    final dx = _pendingOrbitX;
+    final dy = _pendingOrbitY;
+    final maxScale = _pendingZoomScale;
+
+    _pendingOrbitX = 0;
+    _pendingOrbitY = 0;
+    _pendingZoomScale = 1.0;
+
+    if (dx != 0 || dy != 0) {
+      await _ensureInitialized();
+      await _methodChannel.invokeMethod<void>('orbitDelta', {
+        'controllerId': _controllerId,
+        'dx': dx,
+        'dy': dy,
+      });
+    }
+
+    if (maxScale != 1.0) {
+      await _ensureInitialized();
+      await _methodChannel.invokeMethod<void>('zoomDelta', {
+        'controllerId': _controllerId,
+        'scaleDelta': maxScale,
+      });
+    }
+  }
 
   Future<void> initialize() async {
     if (_disposed) {
@@ -674,6 +719,7 @@ class FilamentController {
   }
 
   Future<void> handleOrbitStart() async {
+    await _flushGestureDeltas();
     await _ensureInitialized();
     await _methodChannel.invokeMethod<void>('orbitStart', {
       'controllerId': _controllerId,
@@ -681,18 +727,16 @@ class FilamentController {
   }
 
   Future<void> handleOrbitDelta(double dx, double dy) async {
-    await _ensureInitialized();
-    await _methodChannel.invokeMethod<void>('orbitDelta', {
-      'controllerId': _controllerId,
-      'dx': dx,
-      'dy': dy,
-    });
+    _pendingOrbitX += dx;
+    _pendingOrbitY += dy;
+    _scheduleGestureFlush();
   }
 
   Future<void> handleOrbitEnd({
     required double velocityX,
     required double velocityY,
   }) async {
+    await _flushGestureDeltas();
     await _ensureInitialized();
     await _methodChannel.invokeMethod<void>('orbitEnd', {
       'controllerId': _controllerId,
@@ -702,6 +746,7 @@ class FilamentController {
   }
 
   Future<void> handleZoomStart() async {
+    await _flushGestureDeltas();
     await _ensureInitialized();
     await _methodChannel.invokeMethod<void>('zoomStart', {
       'controllerId': _controllerId,
@@ -709,14 +754,12 @@ class FilamentController {
   }
 
   Future<void> handleZoomDelta(double scaleDelta) async {
-    await _ensureInitialized();
-    await _methodChannel.invokeMethod<void>('zoomDelta', {
-      'controllerId': _controllerId,
-      'scaleDelta': scaleDelta,
-    });
+    _pendingZoomScale *= scaleDelta;
+    _scheduleGestureFlush();
   }
 
   Future<void> handleZoomEnd() async {
+    await _flushGestureDeltas();
     await _ensureInitialized();
     await _methodChannel.invokeMethod<void>('zoomEnd', {
       'controllerId': _controllerId,
