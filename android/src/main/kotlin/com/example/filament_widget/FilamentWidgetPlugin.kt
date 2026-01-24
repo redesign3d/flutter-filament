@@ -32,7 +32,7 @@ class FilamentWidgetPlugin :
     private val ioExecutor = Executors.newSingleThreadExecutor()
     private val mainHandler = Handler(Looper.getMainLooper())
     private val controllers = ConcurrentHashMap<Int, FilamentControllerState>()
-    private val eventSinks = ConcurrentHashMap<Int, EventChannel.EventSink>()
+    private var eventSink: EventChannel.EventSink? = null
     private var cacheManager: FilamentCacheManager? = null
     private var activity: Activity? = null
     private var lifecycleCallbacks: Application.ActivityLifecycleCallbacks? = null
@@ -112,19 +112,11 @@ class FilamentWidgetPlugin :
     }
 
     override fun onListen(arguments: Any?, events: EventChannel.EventSink) {
-        val controllerId = (arguments as? Map<*, *>)?.get("controllerId") as? Number
-        if (controllerId == null) {
-            events.error("filament_error", "Missing controllerId for events.", null)
-            return
-        }
-        eventSinks[controllerId.toInt()] = events
+        eventSink = events
     }
 
     override fun onCancel(arguments: Any?) {
-        val controllerId = (arguments as? Map<*, *>)?.get("controllerId") as? Number
-        if (controllerId != null) {
-            eventSinks.remove(controllerId.toInt())
-        }
+        eventSink = null
     }
 
     override fun onAttachedToActivity(binding: ActivityPluginBinding) {
@@ -540,8 +532,9 @@ class FilamentWidgetPlugin :
 
     private fun emitEvent(controllerId: Int, type: String, message: String) {
         mainHandler.post {
-            eventSinks[controllerId]?.success(
+            eventSink?.success(
                 mapOf(
+                    "controllerId" to controllerId,
                     "type" to type,
                     "message" to message,
                 ),

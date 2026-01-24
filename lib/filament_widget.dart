@@ -242,6 +242,11 @@ class FilamentController {
   static const EventChannel _eventChannel = EventChannel(
     'filament_widget/events',
   );
+  
+  static final StreamController<Map<dynamic, dynamic>> _globalEventStreamController =
+      StreamController<Map<dynamic, dynamic>>.broadcast();
+  static StreamSubscription<dynamic>? _globalEventSub;
+  static int _activeControllerCount = 0;
 
   static int _nextId = 1;
 
@@ -249,7 +254,7 @@ class FilamentController {
   int? _textureId;
   bool _initialized = false;
   bool _disposed = false;
-  StreamSubscription<dynamic>? _eventSub;
+  StreamSubscription<Map<dynamic, dynamic>>? _controllerEventSub;
   final StreamController<FilamentEvent> _eventController =
       StreamController<FilamentEvent>.broadcast();
 
@@ -274,10 +279,13 @@ class FilamentController {
     });
     if (_disposed) return; // check again after await
 
-    _eventSub = _eventChannel
-        .receiveBroadcastStream({'controllerId': _controllerId}).listen(
-            _handleEvent,
-            onError: _eventController.addError);
+    _ensureGlobalEventStream();
+    _controllerEventSub = _globalEventStreamController.stream.listen((event) {
+      if (event['controllerId'] == _controllerId) {
+        _handleEvent(event);
+      }
+    });
+
     _initialized = true;
   }
 
@@ -286,8 +294,10 @@ class FilamentController {
       return;
     }
     _disposed = true;
-    await _eventSub?.cancel();
-    _eventSub = null;
+    await _controllerEventSub?.cancel();
+    _controllerEventSub = null;
+    
+    _releaseGlobalEventStream();
     
     if (_initialized) {
       await _methodChannel.invokeMethod<void>('disposeController', {
@@ -295,6 +305,28 @@ class FilamentController {
       });
     }
     await _eventController.close();
+  }
+
+  static void _ensureGlobalEventStream() {
+    if (_activeControllerCount == 0) {
+      _globalEventSub = _eventChannel.receiveBroadcastStream().listen((event) {
+        if (event is Map) {
+          _globalEventStreamController.add(event);
+        }
+      }, onError: (error) {
+         // Forward errors if needed, or log
+      });
+    }
+    _activeControllerCount++;
+  }
+
+  static void _releaseGlobalEventStream() {
+    _activeControllerCount--;
+    if (_activeControllerCount <= 0) {
+      _activeControllerCount = 0;
+      _globalEventSub?.cancel();
+      _globalEventSub = null;
+    }
   }
 
   Future<void> createViewer({

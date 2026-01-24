@@ -8,7 +8,7 @@ public class FilamentWidgetPlugin: NSObject, FlutterPlugin, FlutterStreamHandler
   private lazy var renderLoop = FilamentRenderLoop.shared
   private lazy var cacheManager = FilamentCacheManager()
   private var controllers: [Int: FilamentController] = [:]
-  private var eventSinks: [Int: FlutterEventSink] = [:]
+  private var eventSink: FlutterEventSink?
   private var observingLifecycle = false
 
   init(registrar: FlutterPluginRegistrar) {
@@ -130,24 +130,12 @@ public class FilamentWidgetPlugin: NSObject, FlutterPlugin, FlutterStreamHandler
   }
 
   public func onListen(withArguments arguments: Any?, eventSink events: @escaping FlutterEventSink) -> FlutterError? {
-    guard
-      let args = arguments as? [String: Any],
-      let controllerId = args["controllerId"] as? Int
-    else {
-      return FlutterError(code: "filament_error", message: "Missing controllerId.", details: nil)
-    }
-    eventSinks[controllerId] = events
+    self.eventSink = events
     return nil
   }
 
   public func onCancel(withArguments arguments: Any?) -> FlutterError? {
-    guard
-      let args = arguments as? [String: Any],
-      let controllerId = args["controllerId"] as? Int
-    else {
-      return nil
-    }
-    eventSinks.removeValue(forKey: controllerId)
+    self.eventSink = nil
     return nil
   }
 
@@ -610,7 +598,7 @@ public class FilamentWidgetPlugin: NSObject, FlutterPlugin, FlutterStreamHandler
 
   private func emitEvent(controllerId: Int, type: String, message: String) {
     DispatchQueue.main.async { [weak self] in
-      self?.eventSinks[controllerId]?(["type": type, "message": message])
+        self?.eventSink?(["controllerId": controllerId, "type": type, "message": message])
     }
   }
 }
