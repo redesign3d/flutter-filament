@@ -8,8 +8,10 @@ import io.flutter.embedding.engine.plugins.FlutterPlugin.FlutterAssets
 import io.flutter.plugin.common.MethodChannel.Result
 import io.flutter.view.TextureRegistry
 import java.io.File
+import java.io.FileInputStream
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
+import java.nio.channels.FileChannel
 import java.util.concurrent.ExecutorService
 
 class FilamentControllerState(
@@ -81,7 +83,11 @@ class FilamentControllerState(
         val baseDir = resolvedPath.substringBeforeLast('/', "")
         ioExecutor.execute {
             try {
+                // To measure time we could use System.nanoTime()
+                val startTime = if (true) System.nanoTime() else 0L
+
                 val buffer = readAssetBuffer(resolvedPath)
+
                 renderThread.post {
                     val current = viewer
                     if (current == null) {
@@ -94,10 +100,13 @@ class FilamentControllerState(
                         return@post
                     }
                     if (resourceUris.isEmpty()) {
-                        current.finishModelLoad(emptyMap())
-                        postSuccess(result)
+                        // If no external resources, we can finish immediately.
+                        // However, we want wireframe generation to be off-thread if possible.
+                        // We'll dispatch a task to ioExecutor to build debug data if needed,
+                        // then come back to render thread.
+                        finishLoadWithDebugData(current, emptyMap(), result, startTime)
                     } else {
-                        loadAssetResourcesAsync(baseDir, resourceUris, current, result)
+                        loadAssetResourcesAsync(baseDir, resourceUris, current, result, startTime)
                     }
                 }
             } catch (e: Exception) {
@@ -110,12 +119,11 @@ class FilamentControllerState(
         ioExecutor.execute {
             try {
                 val file = cacheManager.getOrDownload(url)
-                val buffer = readFileBuffer(file)
+                val buffer = mapFileBuffer(file) ?: readFileBuffer(file)
                 val baseUrl = url.substringBeforeLast("/")
                 renderThread.post {
                     val current = viewer
                     if (current == null) {
-                         // Viewer disposed while loading
                         return@post
                     }
                     val resourceUris = current.beginModelLoad(buffer)
@@ -144,12 +152,11 @@ class FilamentControllerState(
                     postError(result, "File not found.")
                     return@execute
                 }
-                val buffer = readFileBuffer(file)
+                val buffer = mapFileBuffer(file) ?: readFileBuffer(file)
                 val baseDir = file.parentFile
                 renderThread.post {
                     val current = viewer
                     if (current == null) {
-                         // Viewer disposed while loading
                         return@post
                     }
                     val resourceUris = current.beginModelLoad(buffer)
@@ -223,7 +230,7 @@ class FilamentControllerState(
         ioExecutor.execute {
             try {
                 val file = cacheManager.getOrDownload(url)
-                val buffer = readFileBuffer(file)
+                val buffer = mapFileBuffer(file) ?: readFileBuffer(file)
                 renderThread.post {
                     viewer?.setIndirectLightFromKtx(buffer)
                     postSuccess(result)
@@ -238,7 +245,7 @@ class FilamentControllerState(
         ioExecutor.execute {
             try {
                 val file = cacheManager.getOrDownload(url)
-                val buffer = readFileBuffer(file)
+                val buffer = mapFileBuffer(file) ?: readFileBuffer(file)
                 renderThread.post {
                     viewer?.setSkyboxFromKtx(buffer)
                     postSuccess(result)
@@ -253,7 +260,7 @@ class FilamentControllerState(
         ioExecutor.execute {
             try {
                 val file = cacheManager.getOrDownload(url)
-                val buffer = readFileBuffer(file)
+                val buffer = mapFileBuffer(file) ?: readFileBuffer(file)
                 renderThread.post {
                     try {
                         viewer?.setHdriFromHdr(buffer)
@@ -656,6 +663,7 @@ class FilamentControllerState(
         resourceUris: List<String>,
         current: FilamentViewer,
         result: Result,
+        startTime: Long,
     ) {
         ioExecutor.execute {
             try {
@@ -667,10 +675,7 @@ class FilamentControllerState(
                     val assetPath = if (baseDir.isEmpty()) uri else "$baseDir/$uri"
                     resources[uri] = readAssetBuffer(assetPath)
                 }
-                renderThread.post {
-                    current.finishModelLoad(resources)
-                    postSuccess(result)
-                }
+                finishLoadWithDebugData(current, resources, result, startTime)
             } catch (e: Exception) {
                 postError(result, e.message ?: "Failed to load glTF resources.")
             }
@@ -683,6 +688,7 @@ class FilamentControllerState(
         current: FilamentViewer,
         result: Result,
     ) {
+        val startTime = System.nanoTime()
         ioExecutor.execute {
             try {
                 val resources = mutableMapOf<String, ByteBuffer>()
@@ -696,12 +702,9 @@ class FilamentControllerState(
                         "$baseUrl/$uri"
                     }
                     val resourceFile = cacheManager.getOrDownload(resourceUrl)
-                    resources[uri] = readFileBuffer(resourceFile)
+                    resources[uri] = mapFileBuffer(resourceFile) ?: readFileBuffer(resourceFile)
                 }
-                renderThread.post {
-                    current.finishModelLoad(resources)
-                    postSuccess(result)
-                }
+                finishLoadWithDebugData(current, resources, result, startTime)
             } catch (e: Exception) {
                 postError(result, e.message ?: "Failed to load glTF resources.")
             }
@@ -714,6 +717,7 @@ class FilamentControllerState(
         current: FilamentViewer,
         result: Result,
     ) {
+        val startTime = System.nanoTime()
         ioExecutor.execute {
             try {
                 val resources = mutableMapOf<String, ByteBuffer>()
@@ -731,15 +735,34 @@ class FilamentControllerState(
                         uri.startsWith("/") -> File(uri)
                         else -> File(baseDir, uri)
                     }
-                    resources[uri] = readFileBuffer(resourceFile)
+                    if (resourceFile.exists()) {
+                         resources[uri] = mapFileBuffer(resourceFile) ?: readFileBuffer(resourceFile)
+                    }
                 }
-                renderThread.post {
-                    current.finishModelLoad(resources)
-                    postSuccess(result)
-                }
+                finishLoadWithDebugData(current, resources, result, startTime)
             } catch (e: Exception) {
                 postError(result, e.message ?: "Failed to load glTF resources.")
             }
+        }
+    }
+
+    private fun finishLoadWithDebugData(
+        current: FilamentViewer,
+        resources: Map<String, ByteBuffer>,
+        result: Result,
+        startTime: Long
+    ) {
+        renderThread.post {
+            current.finishModelLoad(resources)
+            ioExecutor.execute {
+                current.updateDebugDataInBackground()
+                renderThread.post {
+                    current.applyDebugData()
+                }
+            }
+            postSuccess(result)
+            val duration = (System.nanoTime() - startTime) / 1_000_000.0
+            current.logDebug("Model load took ${String.format("%.2f", duration)} ms")
         }
     }
 
@@ -748,6 +771,17 @@ class FilamentControllerState(
             val bytes = input.readBytes()
             return bytes.toDirectBuffer()
         }
+    }
+
+    private fun mapFileBuffer(file: File): ByteBuffer? {
+         return try {
+             FileInputStream(file).use { fis ->
+                 val channel = fis.channel
+                 channel.map(FileChannel.MapMode.READ_ONLY, 0, channel.size())
+             }
+         } catch (e: Exception) {
+             null
+         }
     }
 
     private fun readFileBuffer(file: File): ByteBuffer {

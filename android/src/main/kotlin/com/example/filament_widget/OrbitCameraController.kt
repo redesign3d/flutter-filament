@@ -109,7 +109,8 @@ class OrbitCameraController {
         velocityPitch *= decay
     }
 
-    fun getEyePosition(): DoubleArray {
+    fun getEyePosition(out: DoubleArray) {
+        require(out.size >= 3) { "Output array must have at least 3 elements" }
         val yawRad = Math.toRadians(yawDeg)
         val pitchRad = Math.toRadians(pitchDeg)
         val cosPitch = cos(pitchRad)
@@ -119,7 +120,9 @@ class OrbitCameraController {
         val x = distance * cosPitch * sinYaw
         val y = distance * sinPitch
         val z = distance * cosPitch * cosYaw
-        return doubleArrayOf(targetX + x, targetY + y, targetZ + z)
+        out[0] = targetX + x
+        out[1] = targetY + y
+        out[2] = targetZ + z
     }
 
     fun setTarget(x: Double, y: Double, z: Double) {

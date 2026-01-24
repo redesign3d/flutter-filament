@@ -14,10 +14,42 @@ public class FilamentWidgetPlugin: NSObject, FlutterPlugin, FlutterStreamHandler
   init(registrar: FlutterPluginRegistrar) {
     self.registrar = registrar
     super.init()
+    startObservingLifecycle()
   }
 
   deinit {
-    NotificationCenter.default.removeObserver(self)
+    stopObservingLifecycle()
+  }
+  
+  private func startObservingLifecycle() {
+      if observingLifecycle { return }
+      NotificationCenter.default.addObserver(self, selector: #selector(appWillResignActive), name: UIApplication.willResignActiveNotification, object: nil)
+      NotificationCenter.default.addObserver(self, selector: #selector(appDidBecomeActive), name: UIApplication.didBecomeActiveNotification, object: nil)
+      NotificationCenter.default.addObserver(self, selector: #selector(appDidEnterBackground), name: UIApplication.didEnterBackgroundNotification, object: nil)
+      NotificationCenter.default.addObserver(self, selector: #selector(appWillEnterForeground), name: UIApplication.willEnterForegroundNotification, object: nil)
+      observingLifecycle = true
+  }
+
+  private func stopObservingLifecycle() {
+      if !observingLifecycle { return }
+      NotificationCenter.default.removeObserver(self)
+      observingLifecycle = false
+  }
+
+  @objc func appWillResignActive() {
+      FilamentRenderLoop.shared.setAppPaused(true)
+  }
+
+  @objc func appDidBecomeActive() {
+      FilamentRenderLoop.shared.setAppPaused(false)
+  }
+
+  @objc func appDidEnterBackground() {
+      FilamentRenderLoop.shared.setAppPaused(true)
+  }
+
+  @objc func appWillEnterForeground() {
+      FilamentRenderLoop.shared.setAppPaused(false)
   }
 
   public static func register(with registrar: FlutterPluginRegistrar) {

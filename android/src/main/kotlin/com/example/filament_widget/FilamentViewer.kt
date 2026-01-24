@@ -97,6 +97,7 @@ class FilamentViewer(
     private var filamentAsset: FilamentAsset? = null
     private var pendingAsset: FilamentAsset? = null
     private var pendingModelData: ByteArray? = null
+    private var tempResourceData: Map<String, ByteBuffer>? = null
     private var animator: Animator? = null
     private var animationIndex = 0
     private var animationLoop = true
@@ -141,6 +142,13 @@ class FilamentViewer(
     private var customCameraEnabled = false
     private var customLookAt = doubleArrayOf(0.0, 0.0, 3.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0)
     private var customPerspective = doubleArrayOf(45.0, 0.05, 100.0)
+
+    // Optimization: scratch arrays and cache
+    private val eyePosScratch = DoubleArray(3)
+    private var lastProjFov = -1.0
+    private var lastProjAspect = -1.0
+    private var lastProjNear = -1.0
+    private var lastProjFar = -1.0
 
     init {
         view.camera = camera
@@ -257,16 +265,29 @@ class FilamentViewer(
         scene.addEntities(asset.entities)
         filamentAsset = asset
         pendingAsset = null
-        wireframeLineData = buildWireframeLineData(resourceData)
-        pendingModelData = null
+        
+        // Debug data generation is offloaded to background thread
+        tempResourceData = resourceData
+        
         animator = asset.instance?.animator
         animationPlaying = false
         animationTimeSeconds = 0.0
         lastAnimationFrameTimeNanos = 0L
         updateBoundsFromAsset(asset)
+        
+        eventEmitter("modelLoaded", "Model loaded.")
+    }
+
+    fun updateDebugDataInBackground() {
+        val resources = tempResourceData ?: return
+        wireframeLineData = buildWireframeLineData(resources)
+    }
+
+    fun applyDebugData() {
         rebuildWireframe()
         rebuildBoundingBoxes()
-        eventEmitter("modelLoaded", "Model loaded.")
+        tempResourceData = null
+        pendingModelData = null
     }
 
     fun destroy() {
@@ -555,24 +576,31 @@ class FilamentViewer(
         scene.addEntity(lightEntity)
     }
 
+    private fun setProjectionIfNeeded(fov: Double, aspect: Double, near: Double, far: Double) {
+        if (fov == lastProjFov && aspect == lastProjAspect && near == lastProjNear && far == lastProjFar) {
+            return
+        }
+        camera.setProjection(fov, aspect, near, far, Camera.Fov.VERTICAL)
+        lastProjFov = fov
+        lastProjAspect = aspect
+        lastProjNear = near
+        lastProjFar = far
+    }
+
     private fun updateProjection() {
         val aspect = viewportWidth.toDouble() / viewportHeight.toDouble()
-        camera.setProjection(
-            cameraFovDegrees,
-            aspect,
-            cameraNear,
-            cameraFar,
-            Camera.Fov.VERTICAL,
-        )
+        setProjectionIfNeeded(cameraFovDegrees, aspect, cameraNear, cameraFar)
     }
 
     private fun updateCamera(frameTimeNanos: Long) {
         if (customCameraEnabled) {
             val aspect = viewportWidth.toDouble() / viewportHeight.toDouble()
-            val fov = customPerspective[0]
-            val near = customPerspective[1]
-            val far = customPerspective[2]
-            camera.setProjection(fov, aspect, near, far, Camera.Fov.VERTICAL)
+            setProjectionIfNeeded(
+                customPerspective[0],
+                aspect,
+                customPerspective[1],
+                customPerspective[2]
+            )
             camera.lookAt(
                 customLookAt[0],
                 customLookAt[1],
@@ -587,11 +615,11 @@ class FilamentViewer(
             return
         }
         orbitController.update(frameTimeNanos)
-        val eye = orbitController.getEyePosition()
+        orbitController.getEyePosition(eyePosScratch)
         camera.lookAt(
-            eye[0],
-            eye[1],
-            eye[2],
+            eyePosScratch[0],
+            eyePosScratch[1],
+            eyePosScratch[2],
             orbitController.targetX,
             orbitController.targetY,
             orbitController.targetZ,

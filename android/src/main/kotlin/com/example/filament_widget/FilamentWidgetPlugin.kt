@@ -125,13 +125,13 @@ class FilamentWidgetPlugin :
         val callbacks = object : Application.ActivityLifecycleCallbacks {
             override fun onActivityResumed(activity: Activity) {
                 if (activity == this@FilamentWidgetPlugin.activity) {
-                    renderThread?.setPaused(false)
+                    renderThread?.setAppPaused(false)
                 }
             }
 
             override fun onActivityPaused(activity: Activity) {
                 if (activity == this@FilamentWidgetPlugin.activity) {
-                    renderThread?.setPaused(true)
+                    renderThread?.setAppPaused(true)
                 }
             }
 
