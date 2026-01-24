@@ -50,6 +50,7 @@ class FilamentViewer(
     private val surface: Surface,
     private val assetManager: AssetManager,
     private val eventEmitter: (String, String) -> Unit,
+    private val engine: Engine,
 ) {
     private data class DebugLineRenderable(
         val entity: Int,
@@ -84,7 +85,6 @@ class FilamentViewer(
         val hasSparse: Boolean,
     )
 
-    private val engine: Engine = FilamentEngineManager.getEngine()
     private val renderer: Renderer = engine.createRenderer()
     private val view: View = engine.createView()
     private val scene: Scene = engine.createScene()

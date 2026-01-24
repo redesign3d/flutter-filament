@@ -33,11 +33,24 @@ class FilamentControllerState(
         val entry = textureRegistry.createSurfaceTexture()
         entry.surfaceTexture().setDefaultBufferSize(width, height)
         val surface = Surface(entry.surfaceTexture())
-        val newViewer = FilamentViewer(entry, surface, context.assets, eventEmitter)
-        viewer = newViewer
-        renderThread.addViewer(newViewer)
-        renderThread.post { newViewer.resize(width, height) }
-        result.success(newViewer.textureId())
+
+        renderThread.post {
+            try {
+                val engine = FilamentEngineManager.getEngine()
+                val newViewer = FilamentViewer(entry, surface, context.assets, eventEmitter, engine)
+                viewer = newViewer
+                renderThread.addViewer(newViewer)
+                newViewer.resize(width, height)
+
+                mainHandler.post {
+                    result.success(newViewer.textureId())
+                }
+            } catch (e: Exception) {
+                mainHandler.post {
+                    result.error("filament_error", "Failed to create viewer: ${e.message}", null)
+                }
+            }
+        }
     }
 
     fun resize(width: Int, height: Int, result: Result) {

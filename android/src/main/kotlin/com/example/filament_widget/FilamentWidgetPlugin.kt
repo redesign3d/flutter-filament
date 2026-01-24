@@ -28,7 +28,7 @@ class FilamentWidgetPlugin :
     private lateinit var textureRegistry: TextureRegistry
     private lateinit var context: Context
     private lateinit var flutterAssets: FlutterPlugin.FlutterAssets
-    private val renderThread = FilamentRenderThread()
+    private var renderThread: FilamentRenderThread? = null
     private val ioExecutor = Executors.newSingleThreadExecutor()
     private val mainHandler = Handler(Looper.getMainLooper())
     private val controllers = ConcurrentHashMap<Int, FilamentControllerState>()
@@ -42,6 +42,7 @@ class FilamentWidgetPlugin :
         flutterAssets = binding.flutterAssets
         textureRegistry = binding.textureRegistry
         cacheManager = FilamentCacheManager(context.cacheDir)
+        renderThread = FilamentRenderThread()
         methodChannel = MethodChannel(binding.binaryMessenger, "filament_widget")
         methodChannel.setMethodCallHandler(this)
         eventChannel = EventChannel(binding.binaryMessenger, "filament_widget/events")
@@ -56,6 +57,8 @@ class FilamentWidgetPlugin :
         }
         controllers.clear()
         ioExecutor.shutdown()
+        renderThread?.dispose()
+        renderThread = null
     }
 
     override fun onMethodCall(call: MethodCall, result: Result) {
@@ -130,13 +133,13 @@ class FilamentWidgetPlugin :
         val callbacks = object : Application.ActivityLifecycleCallbacks {
             override fun onActivityResumed(activity: Activity) {
                 if (activity == this@FilamentWidgetPlugin.activity) {
-                    renderThread.setPaused(false)
+                    renderThread?.setPaused(false)
                 }
             }
 
             override fun onActivityPaused(activity: Activity) {
                 if (activity == this@FilamentWidgetPlugin.activity) {
-                    renderThread.setPaused(true)
+                    renderThread?.setPaused(true)
                 }
             }
 
@@ -166,13 +169,18 @@ class FilamentWidgetPlugin :
         lifecycleCallbacks?.let { activity?.application?.unregisterActivityLifecycleCallbacks(it) }
         lifecycleCallbacks = null
         activity = null
-        renderThread.setPaused(true)
+        renderThread?.setPaused(true)
     }
 
     private fun handleCreateController(call: MethodCall, result: Result) {
         val controllerId = call.argument<Number>("controllerId")?.toInt()
         if (controllerId == null) {
             result.error("filament_error", "Missing controllerId.", null)
+            return
+        }
+        val rThread = renderThread
+        if (rThread == null) {
+            result.error("filament_error", "Render thread not initialized.", null)
             return
         }
         val cache = cacheManager ?: FilamentCacheManager(context.cacheDir)
@@ -182,7 +190,7 @@ class FilamentWidgetPlugin :
             context,
             flutterAssets,
             textureRegistry,
-            renderThread,
+            rThread,
             ioExecutor,
             mainHandler,
             cache,

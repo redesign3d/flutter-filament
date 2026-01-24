@@ -11,6 +11,12 @@ class FilamentRenderThread {
     private val viewers = CopyOnWriteArraySet<FilamentViewer>()
     private var choreographer: Choreographer? = null
 
+    init {
+        handler.post {
+            FilamentEngineManager.init()
+        }
+    }
+
     private val frameCallback = object : Choreographer.FrameCallback {
         override fun doFrame(frameTimeNanos: Long) {
             if (viewers.isEmpty()) {
@@ -29,18 +35,22 @@ class FilamentRenderThread {
     }
 
     fun addViewer(viewer: FilamentViewer) {
-        handler.post {
-            viewers.add(viewer)
-            ensureChoreographer()
+        if (Thread.currentThread() !== thread) {
+            handler.post { addViewer(viewer) }
+            return
         }
+        viewers.add(viewer)
+        ensureChoreographer()
     }
 
     fun removeViewer(viewer: FilamentViewer) {
-        handler.post {
-            viewers.remove(viewer)
-            if (viewers.isEmpty()) {
-                stopChoreographer()
-            }
+        if (Thread.currentThread() !== thread) {
+            handler.post { removeViewer(viewer) }
+            return
+        }
+        viewers.remove(viewer)
+        if (viewers.isEmpty()) {
+            stopChoreographer()
         }
     }
 
@@ -49,6 +59,15 @@ class FilamentRenderThread {
             for (viewer in viewers) {
                 viewer.setPaused(paused)
             }
+        }
+    }
+
+    fun dispose() {
+        handler.post {
+            stopChoreographer()
+            viewers.clear()
+            FilamentEngineManager.destroy()
+            thread.quitSafely()
         }
     }
 
