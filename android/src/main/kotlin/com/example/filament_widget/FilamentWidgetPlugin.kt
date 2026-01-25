@@ -21,6 +21,7 @@ import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.Executors
+import java.util.concurrent.atomic.AtomicLong
 
 class FilamentWidgetPlugin :
     FlutterPlugin,
@@ -37,6 +38,7 @@ class FilamentWidgetPlugin :
     private val ioExecutor = Executors.newSingleThreadExecutor()
     private val mainHandler = Handler(Looper.getMainLooper())
     private val controllers = ConcurrentHashMap<Int, FilamentControllerState>()
+    private val nextControllerId = AtomicLong(1)
     private var eventSink: EventChannel.EventSink? = null
     private var cacheManager: FilamentCacheManager? = null
     private var activity: Activity? = null
@@ -206,13 +208,8 @@ class FilamentWidgetPlugin :
     }
 
     private fun handleCreateController(call: MethodCall, result: Result) {
-        val controllerId = call.argument<Number>("controllerId")?.toInt()
         val debugFeaturesEnabled = call.argument<Boolean>("debugFeaturesEnabled") ?: true
-
-        if (controllerId == null) {
-            result.error(FilamentErrors.INVALID_ARGS, "Missing controllerId.", null)
-            return
-        }
+        val controllerId = generateControllerId(result) ?: return
         val rThread = renderThread
         if (rThread == null) {
             result.error(FilamentErrors.NATIVE, "Render thread not initialized.", null)
@@ -235,7 +232,23 @@ class FilamentWidgetPlugin :
             debugFeaturesEnabled
         )
         controllers[controllerId] = controller
-        result.success(null)
+        result.success(controllerId)
+    }
+
+    private fun generateControllerId(result: Result): Int? {
+        repeat(10) {
+            val candidate = nextControllerId.getAndIncrement()
+            if (candidate > Int.MAX_VALUE) {
+                result.error(FilamentErrors.NATIVE, "Controller id overflow.", null)
+                return null
+            }
+            val id = candidate.toInt()
+            if (!controllers.containsKey(id)) {
+                return id
+            }
+        }
+        result.error(FilamentErrors.NATIVE, "Failed to allocate controller id.", null)
+        return null
     }
 
     private fun handleDisposeController(call: MethodCall, result: Result) {

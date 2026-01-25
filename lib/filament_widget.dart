@@ -265,12 +265,11 @@ class FilamentController {
   static StreamSubscription<dynamic>? _globalEventSub;
   static int _activeControllerCount = 0;
 
-  static int _nextId = 1;
-
   int? _controllerId;
   int? _textureId;
   bool _initialized = false;
   bool _disposed = false;
+  Future<void>? _initializeFuture;
   StreamSubscription<Map<dynamic, dynamic>>? _controllerEventSub;
   final StreamController<FilamentEvent> _eventController =
       StreamController<FilamentEvent>.broadcast();
@@ -285,6 +284,9 @@ class FilamentController {
   bool _isFrameCallbackScheduled = false;
 
   int? get textureId => _textureId;
+
+  @visibleForTesting
+  int? get debugControllerId => _controllerId;
 
   Stream<FilamentEvent> get events => _eventController.stream;
   Future<void> get onViewerReady => _viewerReadyCompleter.future;
@@ -363,11 +365,35 @@ class FilamentController {
     if (_initialized) {
       return;
     }
-    _controllerId = _nextId++;
-    await _methodChannel.invokeMethod<void>('createController', {
-      'controllerId': _controllerId,
-      'debugFeaturesEnabled': debugFeaturesEnabled,
-    });
+    if (_initializeFuture != null) {
+      await _initializeFuture;
+      return;
+    }
+    final completer = Completer<void>();
+    _initializeFuture = completer.future;
+    try {
+      final controllerId = await _methodChannel.invokeMethod<int>(
+        'createController',
+        {
+          'debugFeaturesEnabled': debugFeaturesEnabled,
+        },
+      );
+      if (_disposed) {
+        if (controllerId != null) {
+          await _methodChannel.invokeMethod<void>('disposeController', {
+            'controllerId': controllerId,
+          });
+        }
+        completer.complete();
+        return;
+      }
+      if (controllerId == null) {
+        throw StateError('Failed to create native controller.');
+      }
+      _controllerId = controllerId;
+    } finally {
+      completer.complete();
+    }
     if (_disposed) return; // check again after await
 
     _ensureGlobalEventStream();
@@ -390,7 +416,7 @@ class FilamentController {
 
     _releaseGlobalEventStream();
 
-    if (_initialized) {
+    if (_controllerId != null) {
       await _methodChannel.invokeMethod<void>('disposeController', {
         'controllerId': _controllerId,
       });
@@ -815,6 +841,9 @@ class FilamentController {
   Future<void> _ensureInitialized() async {
     if (!_initialized) {
       await initialize();
+    }
+    if (_controllerId == null) {
+      throw StateError('FilamentController not initialized.');
     }
   }
 
