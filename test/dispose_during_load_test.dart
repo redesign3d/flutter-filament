@@ -60,9 +60,9 @@ void main() {
     await controller.initialize();
 
     final loadFuture = controller.loadModelFromAsset('assets/model.glb');
+    final expectation = expectDisposed(loadFuture);
     await controller.dispose();
-
-    await expectDisposed(loadFuture);
+    await expectation;
   });
 
   test('loadModelFromUrl completes when disposed', () async {
@@ -70,8 +70,8 @@ void main() {
     await controller.initialize();
 
     final loadFuture = controller.loadModelFromUrl('https://example.com/a.glb');
+    final expectation = expectDisposed(loadFuture);
     await controller.dispose();
-
-    await expectDisposed(loadFuture);
+    await expectation;
   });
 }
