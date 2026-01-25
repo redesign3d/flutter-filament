@@ -581,9 +581,12 @@ class FilamentControllerState(
     }
 
     fun setGestureActive(active: Boolean) {
-        viewer?.setGestureActive(active)
-        if (active) {
-            renderThread.requestFrame()
+        val current = viewer ?: return
+        renderThread.post {
+            current.setGestureActive(active)
+            if (active) {
+                renderThread.requestFrame()
+            }
         }
     }
 

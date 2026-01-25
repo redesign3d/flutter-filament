@@ -23,7 +23,7 @@ const String kRemoteMetalRoughSpheresUrl =
 const String kIblAssetPath = 'assets/envs/filament_env_ibl.ktx';
 const String kSkyboxAssetPath = 'assets/envs/filament_env_skybox.ktx';
 const String kHdriRemoteUrl =
-    'https://dl.polyhaven.org/file/ph-assets/HDRIs/hdr/1k/venice_sunset_1k.hdr';
+    'https://dl.polyhaven.org/file/ph-assets/HDRIs/hdr/4k/venice_sunset_4k.hdr';
 const bool kAutoHdriSwitch =
     bool.fromEnvironment('FILAMENT_AUTO_HDRI', defaultValue: false);
 
