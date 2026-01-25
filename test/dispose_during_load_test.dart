@@ -17,7 +17,7 @@ void main() {
         .setMockMethodCallHandler(channel, (MethodCall methodCall) async {
       switch (methodCall.method) {
         case 'createController':
-          return null;
+          return;
         case 'disposeController':
           for (final completer in pendingLoads) {
             if (!completer.isCompleted) {
@@ -28,7 +28,7 @@ void main() {
             }
           }
           pendingLoads.clear();
-          return null;
+          return;
         case 'loadModelFromAsset':
         case 'loadModelFromUrl':
         case 'loadModelFromFile':
@@ -36,7 +36,7 @@ void main() {
           pendingLoads.add(completer);
           return completer.future;
       }
-      return null;
+      return;
     });
   });
 
