@@ -2,9 +2,9 @@ name: ci
 
 on:
   push:
-    branches: [main]
+    branches: [main, codex-improvements]
   pull_request:
-    branches: [main]
+    branches: [main, codex-improvements]
 
 jobs:
   build:

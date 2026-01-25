@@ -97,97 +97,98 @@ public class FilamentWidgetPlugin: NSObject, FlutterPlugin, FlutterStreamHandler
   }
 
   public func handle(_ call: FlutterMethodCall, result: @escaping FlutterResult) {
+    let safeResult = FilamentResultOnce(result)
     switch call.method {
     case "createController":
-      handleCreateController(call, result: result)
+      handleCreateController(call, result: safeResult)
     case "disposeController":
-      handleDisposeController(call, result: result)
+      handleDisposeController(call, result: safeResult)
     case "createViewer":
-      handleCreateViewer(call, result: result)
+      handleCreateViewer(call, result: safeResult)
     case "resize":
-      handleResize(call, result: result)
+      handleResize(call, result: safeResult)
     case "clearScene":
-      handleClearScene(call, result: result)
+      handleClearScene(call, result: safeResult)
     case "loadModelFromAsset":
-      handleLoadModelFromAsset(call, result: result)
+      handleLoadModelFromAsset(call, result: safeResult)
     case "loadModelFromUrl":
-      handleLoadModelFromUrl(call, result: result)
+      handleLoadModelFromUrl(call, result: safeResult)
     case "loadModelFromFile":
-      handleLoadModelFromFile(call, result: result)
+      handleLoadModelFromFile(call, result: safeResult)
     case "getCacheSizeBytes":
-      handleCacheSize(call, result: result)
+      handleCacheSize(call, result: safeResult)
     case "clearCache":
-      handleClearCache(call, result: result)
+      handleClearCache(call, result: safeResult)
     case "setIBLFromAsset":
-      handleSetIBLFromAsset(call, result: result)
+      handleSetIBLFromAsset(call, result: safeResult)
     case "setSkyboxFromAsset":
-      handleSetSkyboxFromAsset(call, result: result)
+      handleSetSkyboxFromAsset(call, result: safeResult)
     case "setHdriFromAsset":
-      handleSetHdriFromAsset(call, result: result)
+      handleSetHdriFromAsset(call, result: safeResult)
     case "setIBLFromUrl":
-      handleSetIBLFromUrl(call, result: result)
+      handleSetIBLFromUrl(call, result: safeResult)
     case "setSkyboxFromUrl":
-      handleSetSkyboxFromUrl(call, result: result)
+      handleSetSkyboxFromUrl(call, result: safeResult)
     case "setHdriFromUrl":
-      handleSetHdriFromUrl(call, result: result)
+      handleSetHdriFromUrl(call, result: safeResult)
     case "frameModel":
-      handleFrameModel(call, result: result)
+      handleFrameModel(call, result: safeResult)
     case "setOrbitConstraints":
-      handleOrbitConstraints(call, result: result)
+      handleOrbitConstraints(call, result: safeResult)
     case "setInertiaEnabled":
-      handleInertiaEnabled(call, result: result)
+      handleInertiaEnabled(call, result: safeResult)
     case "setInertiaParams":
-      handleInertiaParams(call, result: result)
+      handleInertiaParams(call, result: safeResult)
     case "setZoomLimits":
-      handleZoomLimits(call, result: result)
+      handleZoomLimits(call, result: safeResult)
     case "setCustomCameraEnabled":
-      handleCustomCameraEnabled(call, result: result)
+      handleCustomCameraEnabled(call, result: safeResult)
     case "setCustomCameraLookAt":
-      handleCustomCameraLookAt(call, result: result)
+      handleCustomCameraLookAt(call, result: safeResult)
     case "setCustomPerspective":
-      handleCustomPerspective(call, result: result)
+      handleCustomPerspective(call, result: safeResult)
     case "getAnimationCount":
-      handleGetAnimationCount(call, result: result)
+      handleGetAnimationCount(call, result: safeResult)
     case "playAnimation":
-      handlePlayAnimation(call, result: result)
+      handlePlayAnimation(call, result: safeResult)
     case "pauseAnimation":
-      handlePauseAnimation(call, result: result)
+      handlePauseAnimation(call, result: safeResult)
     case "seekAnimation":
-      handleSeekAnimation(call, result: result)
+      handleSeekAnimation(call, result: safeResult)
     case "setAnimationSpeed":
-      handleSetAnimationSpeed(call, result: result)
+      handleSetAnimationSpeed(call, result: safeResult)
     case "getAnimationDuration":
-      handleGetAnimationDuration(call, result: result)
+      handleGetAnimationDuration(call, result: safeResult)
     case "setMsaa":
-      handleSetMsaa(call, result: result)
+      handleSetMsaa(call, result: safeResult)
     case "setDynamicResolutionEnabled":
-      handleSetDynamicResolutionEnabled(call, result: result)
+      handleSetDynamicResolutionEnabled(call, result: safeResult)
     case "setEnvironmentEnabled":
-      handleSetEnvironmentEnabled(call, result: result)
+      handleSetEnvironmentEnabled(call, result: safeResult)
     case "setToneMappingFilmic":
-      handleSetToneMappingFilmic(call, result: result)
+      handleSetToneMappingFilmic(call, result: safeResult)
     case "setShadowsEnabled":
-      handleSetShadowsEnabled(call, result: result)
+      handleSetShadowsEnabled(call, result: safeResult)
     case "setWireframeEnabled":
-      handleSetWireframeEnabled(call, result: result)
+      handleSetWireframeEnabled(call, result: safeResult)
     case "setBoundingBoxesEnabled":
-      handleSetBoundingBoxesEnabled(call, result: result)
+      handleSetBoundingBoxesEnabled(call, result: safeResult)
     case "setDebugLoggingEnabled":
-      handleSetDebugLoggingEnabled(call, result: result)
+      handleSetDebugLoggingEnabled(call, result: safeResult)
     case "orbitStart":
-      handleOrbitStart(call, result: result)
+      handleOrbitStart(call, result: safeResult)
     case "orbitDelta":
-      handleOrbitDelta(call, result: result)
+      handleOrbitDelta(call, result: safeResult)
     case "orbitEnd":
-      handleOrbitEnd(call, result: result)
+      handleOrbitEnd(call, result: safeResult)
     case "zoomStart":
-      handleZoomStart(call, result: result)
+      handleZoomStart(call, result: safeResult)
     case "zoomDelta":
-      handleZoomDelta(call, result: result)
+      handleZoomDelta(call, result: safeResult)
     case "zoomEnd":
-      handleZoomEnd(call, result: result)
+      handleZoomEnd(call, result: safeResult)
     default:
-      result(FlutterMethodNotImplemented)
+      safeResult.notImplemented()
     }
   }
 
@@ -201,12 +202,12 @@ public class FilamentWidgetPlugin: NSObject, FlutterPlugin, FlutterStreamHandler
     return nil
   }
 
-  private func handleCreateController(_ call: FlutterMethodCall, result: @escaping FlutterResult) {
+  private func handleCreateController(_ call: FlutterMethodCall, result: FilamentResultOnce) {
     guard
       let args = call.arguments as? [String: Any],
       let controllerId = args["controllerId"] as? Int
     else {
-      result(FlutterError(code: "filament_error", message: "Missing controllerId.", details: nil))
+      result.error(code: FilamentErrors.invalidArgs, message: "Missing controllerId.")
       return
     }
     let debugFeaturesEnabled = args["debugFeaturesEnabled"] as? Bool ?? true
@@ -220,7 +221,7 @@ public class FilamentWidgetPlugin: NSObject, FlutterPlugin, FlutterStreamHandler
       }
     }
     guard let textureRegistry, let assetLookup else {
-      result(FlutterError(code: "filament_error", message: "Filament plugin not ready.", details: nil))
+      result.error(code: FilamentErrors.native, message: "Filament plugin not ready.")
       return
     }
     let controller = FilamentController(
@@ -234,7 +235,7 @@ public class FilamentWidgetPlugin: NSObject, FlutterPlugin, FlutterStreamHandler
       self?.emitEvent(controllerId: controllerId, type: type, message: message)
     }
     controllers[controllerId] = controller
-    result(nil)
+    result.success(nil)
   }
 
   private func startObservingLifecycleIfNeeded() {
@@ -256,7 +257,7 @@ public class FilamentWidgetPlugin: NSObject, FlutterPlugin, FlutterStreamHandler
     )
   }
 
-  private func handleDisposeController(_ call: FlutterMethodCall, result: @escaping FlutterResult) {
+  private func handleDisposeController(_ call: FlutterMethodCall, result: FilamentResultOnce) {
     guard let controller = resolveController(call, result: result) else { return }
     controller.dispose(result: result)
     if let args = call.arguments as? [String: Any], let controllerId = args["controllerId"] as? Int {
@@ -264,7 +265,7 @@ public class FilamentWidgetPlugin: NSObject, FlutterPlugin, FlutterStreamHandler
     }
   }
 
-  private func handleCreateViewer(_ call: FlutterMethodCall, result: @escaping FlutterResult) {
+  private func handleCreateViewer(_ call: FlutterMethodCall, result: FilamentResultOnce) {
     guard let controller = resolveController(call, result: result) else { return }
     let args = call.arguments as? [String: Any]
     let width = args?["width"] as? Int ?? 1
@@ -272,7 +273,7 @@ public class FilamentWidgetPlugin: NSObject, FlutterPlugin, FlutterStreamHandler
     controller.createViewer(width: width, height: height, result: result)
   }
 
-  private func handleResize(_ call: FlutterMethodCall, result: @escaping FlutterResult) {
+  private func handleResize(_ call: FlutterMethodCall, result: FilamentResultOnce) {
     guard let controller = resolveController(call, result: result) else { return }
     let args = call.arguments as? [String: Any]
     let width = args?["width"] as? Int ?? 1
@@ -280,140 +281,140 @@ public class FilamentWidgetPlugin: NSObject, FlutterPlugin, FlutterStreamHandler
     controller.resize(width: width, height: height, result: result)
   }
 
-  private func handleClearScene(_ call: FlutterMethodCall, result: @escaping FlutterResult) {
+  private func handleClearScene(_ call: FlutterMethodCall, result: FilamentResultOnce) {
     guard let controller = resolveController(call, result: result) else { return }
     controller.clearScene(result: result)
   }
 
-  private func handleLoadModelFromAsset(_ call: FlutterMethodCall, result: @escaping FlutterResult) {
+  private func handleLoadModelFromAsset(_ call: FlutterMethodCall, result: FilamentResultOnce) {
     guard let controller = resolveController(call, result: result) else { return }
     guard
       let args = call.arguments as? [String: Any],
       let assetPath = args["assetPath"] as? String
     else {
-      result(FlutterError(code: "filament_error", message: "Missing assetPath.", details: nil))
+      result.error(code: FilamentErrors.invalidArgs, message: "Missing assetPath.")
       return
     }
     controller.loadModelFromAsset(assetPath: assetPath, result: result)
   }
 
-  private func handleLoadModelFromUrl(_ call: FlutterMethodCall, result: @escaping FlutterResult) {
+  private func handleLoadModelFromUrl(_ call: FlutterMethodCall, result: FilamentResultOnce) {
     guard let controller = resolveController(call, result: result) else { return }
     guard
       let args = call.arguments as? [String: Any],
       let url = args["url"] as? String
     else {
-      result(FlutterError(code: "filament_error", message: "Missing url.", details: nil))
+      result.error(code: FilamentErrors.invalidArgs, message: "Missing url.")
       return
     }
     controller.loadModelFromUrl(urlString: url, result: result)
   }
 
-  private func handleLoadModelFromFile(_ call: FlutterMethodCall, result: @escaping FlutterResult) {
+  private func handleLoadModelFromFile(_ call: FlutterMethodCall, result: FilamentResultOnce) {
     guard let controller = resolveController(call, result: result) else { return }
     guard
       let args = call.arguments as? [String: Any],
       let filePath = args["filePath"] as? String
     else {
-      result(FlutterError(code: "filament_error", message: "Missing filePath.", details: nil))
+      result.error(code: FilamentErrors.invalidArgs, message: "Missing filePath.")
       return
     }
     controller.loadModelFromFile(filePath: filePath, result: result)
   }
 
-  private func handleCacheSize(_ call: FlutterMethodCall, result: @escaping FlutterResult) {
+  private func handleCacheSize(_ call: FlutterMethodCall, result: FilamentResultOnce) {
     guard let controller = resolveController(call, result: result) else { return }
     controller.getCacheSizeBytes(result: result)
   }
 
-  private func handleClearCache(_ call: FlutterMethodCall, result: @escaping FlutterResult) {
+  private func handleClearCache(_ call: FlutterMethodCall, result: FilamentResultOnce) {
     guard let controller = resolveController(call, result: result) else { return }
     controller.clearCache(result: result)
   }
 
-  private func handleSetIBLFromAsset(_ call: FlutterMethodCall, result: @escaping FlutterResult) {
+  private func handleSetIBLFromAsset(_ call: FlutterMethodCall, result: FilamentResultOnce) {
     guard let controller = resolveController(call, result: result) else { return }
     guard
       let args = call.arguments as? [String: Any],
       let ktxPath = args["ktxPath"] as? String
     else {
-      result(FlutterError(code: "filament_error", message: "Missing ktxPath.", details: nil))
+      result.error(code: FilamentErrors.invalidArgs, message: "Missing ktxPath.")
       return
     }
     controller.setIBLFromAsset(ktxPath: ktxPath, result: result)
   }
 
-  private func handleSetSkyboxFromAsset(_ call: FlutterMethodCall, result: @escaping FlutterResult) {
+  private func handleSetSkyboxFromAsset(_ call: FlutterMethodCall, result: FilamentResultOnce) {
     guard let controller = resolveController(call, result: result) else { return }
     guard
       let args = call.arguments as? [String: Any],
       let ktxPath = args["ktxPath"] as? String
     else {
-      result(FlutterError(code: "filament_error", message: "Missing ktxPath.", details: nil))
+      result.error(code: FilamentErrors.invalidArgs, message: "Missing ktxPath.")
       return
     }
     controller.setSkyboxFromAsset(ktxPath: ktxPath, result: result)
   }
 
-  private func handleSetHdriFromAsset(_ call: FlutterMethodCall, result: @escaping FlutterResult) {
+  private func handleSetHdriFromAsset(_ call: FlutterMethodCall, result: FilamentResultOnce) {
     guard let controller = resolveController(call, result: result) else { return }
     guard
       let args = call.arguments as? [String: Any],
       let hdrPath = args["hdrPath"] as? String
     else {
-      result(FlutterError(code: "filament_error", message: "Missing hdrPath.", details: nil))
+      result.error(code: FilamentErrors.invalidArgs, message: "Missing hdrPath.")
       return
     }
     controller.setHdriFromAsset(hdrPath: hdrPath, result: result)
   }
 
-  private func handleSetIBLFromUrl(_ call: FlutterMethodCall, result: @escaping FlutterResult) {
+  private func handleSetIBLFromUrl(_ call: FlutterMethodCall, result: FilamentResultOnce) {
     guard let controller = resolveController(call, result: result) else { return }
     guard
       let args = call.arguments as? [String: Any],
       let url = args["url"] as? String
     else {
-      result(FlutterError(code: "filament_error", message: "Missing url.", details: nil))
+      result.error(code: FilamentErrors.invalidArgs, message: "Missing url.")
       return
     }
     controller.setIBLFromUrl(urlString: url, result: result)
   }
 
-  private func handleSetSkyboxFromUrl(_ call: FlutterMethodCall, result: @escaping FlutterResult) {
+  private func handleSetSkyboxFromUrl(_ call: FlutterMethodCall, result: FilamentResultOnce) {
     guard let controller = resolveController(call, result: result) else { return }
     guard
       let args = call.arguments as? [String: Any],
       let url = args["url"] as? String
     else {
-      result(FlutterError(code: "filament_error", message: "Missing url.", details: nil))
+      result.error(code: FilamentErrors.invalidArgs, message: "Missing url.")
       return
     }
     controller.setSkyboxFromUrl(urlString: url, result: result)
   }
 
-  private func handleSetHdriFromUrl(_ call: FlutterMethodCall, result: @escaping FlutterResult) {
+  private func handleSetHdriFromUrl(_ call: FlutterMethodCall, result: FilamentResultOnce) {
     guard let controller = resolveController(call, result: result) else { return }
     guard
       let args = call.arguments as? [String: Any],
       let url = args["url"] as? String
     else {
-      result(FlutterError(code: "filament_error", message: "Missing url.", details: nil))
+      result.error(code: FilamentErrors.invalidArgs, message: "Missing url.")
       return
     }
     controller.setHdriFromUrl(urlString: url, result: result)
   }
 
-  private func handleFrameModel(_ call: FlutterMethodCall, result: @escaping FlutterResult) {
+  private func handleFrameModel(_ call: FlutterMethodCall, result: FilamentResultOnce) {
     guard let controller = resolveController(call, result: result) else { return }
     let args = call.arguments as? [String: Any]
     let useWorldOrigin = args?["useWorldOrigin"] as? Bool ?? false
     controller.frameModel(useWorldOrigin: useWorldOrigin, result: result)
   }
 
-  private func handleOrbitConstraints(_ call: FlutterMethodCall, result: @escaping FlutterResult) {
+  private func handleOrbitConstraints(_ call: FlutterMethodCall, result: FilamentResultOnce) {
     guard let controller = resolveController(call, result: result) else { return }
     guard let args = call.arguments as? [String: Any] else {
-      result(FlutterError(code: "filament_error", message: "Missing orbit constraints.", details: nil))
+      result.error(code: FilamentErrors.invalidArgs, message: "Missing orbit constraints.")
       return
     }
     let minPitch = args["minPitchDeg"] as? Double ?? -89.0
@@ -429,14 +430,14 @@ public class FilamentWidgetPlugin: NSObject, FlutterPlugin, FlutterStreamHandler
     )
   }
 
-  private func handleInertiaEnabled(_ call: FlutterMethodCall, result: @escaping FlutterResult) {
+  private func handleInertiaEnabled(_ call: FlutterMethodCall, result: FilamentResultOnce) {
     guard let controller = resolveController(call, result: result) else { return }
     let args = call.arguments as? [String: Any]
     let enabled = args?["enabled"] as? Bool ?? true
     controller.setInertiaEnabled(enabled, result: result)
   }
 
-  private func handleInertiaParams(_ call: FlutterMethodCall, result: @escaping FlutterResult) {
+  private func handleInertiaParams(_ call: FlutterMethodCall, result: FilamentResultOnce) {
     guard let controller = resolveController(call, result: result) else { return }
     let args = call.arguments as? [String: Any]
     let damping = args?["damping"] as? Double ?? 0.9
@@ -444,10 +445,10 @@ public class FilamentWidgetPlugin: NSObject, FlutterPlugin, FlutterStreamHandler
     controller.setInertiaParams(damping: damping, sensitivity: sensitivity, result: result)
   }
 
-  private func handleZoomLimits(_ call: FlutterMethodCall, result: @escaping FlutterResult) {
+  private func handleZoomLimits(_ call: FlutterMethodCall, result: FilamentResultOnce) {
     guard let controller = resolveController(call, result: result) else { return }
     guard let args = call.arguments as? [String: Any] else {
-      result(FlutterError(code: "filament_error", message: "Missing zoom limits.", details: nil))
+      result.error(code: FilamentErrors.invalidArgs, message: "Missing zoom limits.")
       return
     }
     let minDistance = args["minDistance"] as? Double ?? 0.05
@@ -455,17 +456,17 @@ public class FilamentWidgetPlugin: NSObject, FlutterPlugin, FlutterStreamHandler
     controller.setZoomLimits(minDistance: minDistance, maxDistance: maxDistance, result: result)
   }
 
-  private func handleCustomCameraEnabled(_ call: FlutterMethodCall, result: @escaping FlutterResult) {
+  private func handleCustomCameraEnabled(_ call: FlutterMethodCall, result: FilamentResultOnce) {
     guard let controller = resolveController(call, result: result) else { return }
     let args = call.arguments as? [String: Any]
     let enabled = args?["enabled"] as? Bool ?? false
     controller.setCustomCameraEnabled(enabled, result: result)
   }
 
-  private func handleCustomCameraLookAt(_ call: FlutterMethodCall, result: @escaping FlutterResult) {
+  private func handleCustomCameraLookAt(_ call: FlutterMethodCall, result: FilamentResultOnce) {
     guard let controller = resolveController(call, result: result) else { return }
     guard let args = call.arguments as? [String: Any] else {
-      result(FlutterError(code: "filament_error", message: "Missing camera lookAt data.", details: nil))
+      result.error(code: FilamentErrors.invalidArgs, message: "Missing camera lookAt data.")
       return
     }
     controller.setCustomCameraLookAt(
@@ -482,10 +483,10 @@ public class FilamentWidgetPlugin: NSObject, FlutterPlugin, FlutterStreamHandler
     )
   }
 
-  private func handleCustomPerspective(_ call: FlutterMethodCall, result: @escaping FlutterResult) {
+  private func handleCustomPerspective(_ call: FlutterMethodCall, result: FilamentResultOnce) {
     guard let controller = resolveController(call, result: result) else { return }
     guard let args = call.arguments as? [String: Any] else {
-      result(FlutterError(code: "filament_error", message: "Missing perspective data.", details: nil))
+      result.error(code: FilamentErrors.invalidArgs, message: "Missing perspective data.")
       return
     }
     let fov = args["fovDegrees"] as? Double ?? 45.0
@@ -494,15 +495,15 @@ public class FilamentWidgetPlugin: NSObject, FlutterPlugin, FlutterStreamHandler
     controller.setCustomPerspective(fovDegrees: fov, near: near, far: far, result: result)
   }
 
-  private func handleGetAnimationCount(_ call: FlutterMethodCall, result: @escaping FlutterResult) {
+  private func handleGetAnimationCount(_ call: FlutterMethodCall, result: FilamentResultOnce) {
     guard let controller = resolveController(call, result: result) else { return }
     controller.getAnimationCount(result: result)
   }
 
-  private func handlePlayAnimation(_ call: FlutterMethodCall, result: @escaping FlutterResult) {
+  private func handlePlayAnimation(_ call: FlutterMethodCall, result: FilamentResultOnce) {
     guard let controller = resolveController(call, result: result) else { return }
     guard let args = call.arguments as? [String: Any] else {
-      result(FlutterError(code: "filament_error", message: "Missing animation data.", details: nil))
+      result.error(code: FilamentErrors.invalidArgs, message: "Missing animation data.")
       return
     }
     let index = args["index"] as? Int ?? 0
@@ -510,95 +511,95 @@ public class FilamentWidgetPlugin: NSObject, FlutterPlugin, FlutterStreamHandler
     controller.playAnimation(index: index, loop: loop, result: result)
   }
 
-  private func handlePauseAnimation(_ call: FlutterMethodCall, result: @escaping FlutterResult) {
+  private func handlePauseAnimation(_ call: FlutterMethodCall, result: FilamentResultOnce) {
     guard let controller = resolveController(call, result: result) else { return }
     controller.pauseAnimation(result: result)
   }
 
-  private func handleSeekAnimation(_ call: FlutterMethodCall, result: @escaping FlutterResult) {
+  private func handleSeekAnimation(_ call: FlutterMethodCall, result: FilamentResultOnce) {
     guard let controller = resolveController(call, result: result) else { return }
     let args = call.arguments as? [String: Any]
     let seconds = args?["seconds"] as? Double ?? 0.0
     controller.seekAnimation(seconds: seconds, result: result)
   }
 
-  private func handleSetAnimationSpeed(_ call: FlutterMethodCall, result: @escaping FlutterResult) {
+  private func handleSetAnimationSpeed(_ call: FlutterMethodCall, result: FilamentResultOnce) {
     guard let controller = resolveController(call, result: result) else { return }
     let args = call.arguments as? [String: Any]
     let speed = args?["speed"] as? Double ?? 1.0
     controller.setAnimationSpeed(speed: speed, result: result)
   }
 
-  private func handleGetAnimationDuration(_ call: FlutterMethodCall, result: @escaping FlutterResult) {
+  private func handleGetAnimationDuration(_ call: FlutterMethodCall, result: FilamentResultOnce) {
     guard let controller = resolveController(call, result: result) else { return }
     let args = call.arguments as? [String: Any]
     let index = args?["index"] as? Int ?? 0
     controller.getAnimationDuration(index: index, result: result)
   }
 
-  private func handleSetMsaa(_ call: FlutterMethodCall, result: @escaping FlutterResult) {
+  private func handleSetMsaa(_ call: FlutterMethodCall, result: FilamentResultOnce) {
     guard let controller = resolveController(call, result: result) else { return }
     let args = call.arguments as? [String: Any]
     let samples = args?["samples"] as? Int ?? 2
     controller.setMsaa(samples: samples, result: result)
   }
 
-  private func handleSetDynamicResolutionEnabled(_ call: FlutterMethodCall, result: @escaping FlutterResult) {
+  private func handleSetDynamicResolutionEnabled(_ call: FlutterMethodCall, result: FilamentResultOnce) {
     guard let controller = resolveController(call, result: result) else { return }
     let args = call.arguments as? [String: Any]
     let enabled = args?["enabled"] as? Bool ?? true
     controller.setDynamicResolutionEnabled(enabled, result: result)
   }
 
-  private func handleSetEnvironmentEnabled(_ call: FlutterMethodCall, result: @escaping FlutterResult) {
+  private func handleSetEnvironmentEnabled(_ call: FlutterMethodCall, result: FilamentResultOnce) {
     guard let controller = resolveController(call, result: result) else { return }
     let args = call.arguments as? [String: Any]
     let enabled = args?["enabled"] as? Bool ?? true
     controller.setEnvironmentEnabled(enabled, result: result)
   }
 
-  private func handleSetToneMappingFilmic(_ call: FlutterMethodCall, result: @escaping FlutterResult) {
+  private func handleSetToneMappingFilmic(_ call: FlutterMethodCall, result: FilamentResultOnce) {
     guard let controller = resolveController(call, result: result) else { return }
     controller.setToneMappingFilmic(result: result)
   }
 
-  private func handleSetShadowsEnabled(_ call: FlutterMethodCall, result: @escaping FlutterResult) {
+  private func handleSetShadowsEnabled(_ call: FlutterMethodCall, result: FilamentResultOnce) {
     guard let controller = resolveController(call, result: result) else { return }
     let args = call.arguments as? [String: Any]
     let enabled = args?["enabled"] as? Bool ?? true
     controller.setShadowsEnabled(enabled, result: result)
   }
 
-  private func handleSetWireframeEnabled(_ call: FlutterMethodCall, result: @escaping FlutterResult) {
+  private func handleSetWireframeEnabled(_ call: FlutterMethodCall, result: FilamentResultOnce) {
     guard let controller = resolveController(call, result: result) else { return }
     let args = call.arguments as? [String: Any]
     let enabled = args?["enabled"] as? Bool ?? false
     controller.setWireframeEnabled(enabled, result: result)
   }
 
-  private func handleSetBoundingBoxesEnabled(_ call: FlutterMethodCall, result: @escaping FlutterResult) {
+  private func handleSetBoundingBoxesEnabled(_ call: FlutterMethodCall, result: FilamentResultOnce) {
     guard let controller = resolveController(call, result: result) else { return }
     let args = call.arguments as? [String: Any]
     let enabled = args?["enabled"] as? Bool ?? false
     controller.setBoundingBoxesEnabled(enabled, result: result)
   }
 
-  private func handleSetDebugLoggingEnabled(_ call: FlutterMethodCall, result: @escaping FlutterResult) {
+  private func handleSetDebugLoggingEnabled(_ call: FlutterMethodCall, result: FilamentResultOnce) {
     guard let controller = resolveController(call, result: result) else { return }
     let args = call.arguments as? [String: Any]
     let enabled = args?["enabled"] as? Bool ?? false
     controller.setDebugLoggingEnabled(enabled, result: result)
   }
 
-  private func handleOrbitStart(_ call: FlutterMethodCall, result: @escaping FlutterResult) {
+  private func handleOrbitStart(_ call: FlutterMethodCall, result: FilamentResultOnce) {
     guard let controller = resolveController(call, result: result) else { return }
     controller.orbitStart(result: result)
   }
 
-  private func handleOrbitDelta(_ call: FlutterMethodCall, result: @escaping FlutterResult) {
+  private func handleOrbitDelta(_ call: FlutterMethodCall, result: FilamentResultOnce) {
     guard let controller = resolveController(call, result: result) else { return }
     guard let args = call.arguments as? [String: Any] else {
-      result(FlutterError(code: "filament_error", message: "Missing orbit delta.", details: nil))
+      result.error(code: FilamentErrors.invalidArgs, message: "Missing orbit delta.")
       return
     }
     let dx = args["dx"] as? Double ?? 0.0
@@ -606,10 +607,10 @@ public class FilamentWidgetPlugin: NSObject, FlutterPlugin, FlutterStreamHandler
     controller.orbitDelta(dx: dx, dy: dy, result: result)
   }
 
-  private func handleOrbitEnd(_ call: FlutterMethodCall, result: @escaping FlutterResult) {
+  private func handleOrbitEnd(_ call: FlutterMethodCall, result: FilamentResultOnce) {
     guard let controller = resolveController(call, result: result) else { return }
     guard let args = call.arguments as? [String: Any] else {
-      result(FlutterError(code: "filament_error", message: "Missing orbit velocity.", details: nil))
+      result.error(code: FilamentErrors.invalidArgs, message: "Missing orbit velocity.")
       return
     }
     let velocityX = args["velocityX"] as? Double ?? 0.0
@@ -617,36 +618,36 @@ public class FilamentWidgetPlugin: NSObject, FlutterPlugin, FlutterStreamHandler
     controller.orbitEnd(velocityX: velocityX, velocityY: velocityY, result: result)
   }
 
-  private func handleZoomStart(_ call: FlutterMethodCall, result: @escaping FlutterResult) {
+  private func handleZoomStart(_ call: FlutterMethodCall, result: FilamentResultOnce) {
     guard let controller = resolveController(call, result: result) else { return }
     controller.zoomStart(result: result)
   }
 
-  private func handleZoomDelta(_ call: FlutterMethodCall, result: @escaping FlutterResult) {
+  private func handleZoomDelta(_ call: FlutterMethodCall, result: FilamentResultOnce) {
     guard let controller = resolveController(call, result: result) else { return }
     guard let args = call.arguments as? [String: Any] else {
-      result(FlutterError(code: "filament_error", message: "Missing zoom delta.", details: nil))
+      result.error(code: FilamentErrors.invalidArgs, message: "Missing zoom delta.")
       return
     }
     let scaleDelta = args["scaleDelta"] as? Double ?? 1.0
     controller.zoomDelta(scaleDelta: scaleDelta, result: result)
   }
 
-  private func handleZoomEnd(_ call: FlutterMethodCall, result: @escaping FlutterResult) {
+  private func handleZoomEnd(_ call: FlutterMethodCall, result: FilamentResultOnce) {
     guard let controller = resolveController(call, result: result) else { return }
     controller.zoomEnd(result: result)
   }
 
-  private func resolveController(_ call: FlutterMethodCall, result: @escaping FlutterResult) -> FilamentController? {
+  private func resolveController(_ call: FlutterMethodCall, result: FilamentResultOnce) -> FilamentController? {
     guard
       let args = call.arguments as? [String: Any],
       let controllerId = args["controllerId"] as? Int
     else {
-      result(FlutterError(code: "filament_error", message: "Missing controllerId.", details: nil))
+      result.error(code: FilamentErrors.invalidArgs, message: "Missing controllerId.")
       return nil
     }
     guard let controller = controllers[controllerId] else {
-      result(FlutterError(code: "filament_error", message: "Unknown controllerId.", details: nil))
+      result.error(code: FilamentErrors.disposed, message: "Controller disposed.")
       return nil
     }
     return controller
