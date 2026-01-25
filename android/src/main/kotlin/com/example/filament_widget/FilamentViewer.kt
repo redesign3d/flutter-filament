@@ -120,6 +120,10 @@ class FilamentViewer(
     private var indirectLightCubemap: Texture? = null
     private var skybox: Skybox? = null
     private var skyboxCubemap: Texture? = null
+
+    private var currentIblKey: String? = null
+    private var currentSkyboxKey: String? = null
+
     private var environmentEnabled = true
     private var paused = false
     private var viewportWidth = 1
@@ -312,14 +316,26 @@ class FilamentViewer(
         clearScene()
         materialProvider?.destroy()
         materialProvider = null
-        indirectLight?.let { engine.destroyIndirectLight(it) }
-        indirectLightCubemap?.let { engine.destroyTexture(it) }
-        skybox?.let { engine.destroySkybox(it) }
-        skyboxCubemap?.let { engine.destroyTexture(it) }
+
+        if (currentIblKey != null) {
+            EnvironmentCache.release(currentIblKey!!, engine)
+        } else {
+            indirectLight?.let { engine.destroyIndirectLight(it) }
+            indirectLightCubemap?.let { engine.destroyTexture(it) }
+        }
+
+        if (currentSkyboxKey != null) {
+            EnvironmentCache.release(currentSkyboxKey!!, engine)
+        } else {
+            skybox?.let { engine.destroySkybox(it) }
+            skyboxCubemap?.let { engine.destroyTexture(it) }
+        }
+
         colorGrading?.let { engine.destroyColorGrading(it) }
         destroyDebugRenderable(wireframeRenderable)
         destroyDebugRenderable(boundsRenderable)
         debugLineMaterial?.let { engine.destroyMaterial(it) }
+        
         indirectLight = null
         indirectLightCubemap = null
         skybox = null
@@ -519,60 +535,160 @@ class FilamentViewer(
         customPerspective = doubleArrayOf(fovDegrees, near, far)
     }
 
-    fun setIndirectLightFromKtx(buffer: ByteBuffer) {
-        val options = KTX1Loader.Options().apply { srgb = false }
-        val bundle = KTX1Loader.createIndirectLight(engine, buffer, options)
-        indirectLight?.let { engine.destroyIndirectLight(it) }
-        indirectLightCubemap?.let { engine.destroyTexture(it) }
-        indirectLight = bundle.indirectLight
-        indirectLightCubemap = bundle.cubemap
-        scene.indirectLight = indirectLight
-    }
+    fun setIndirectLightFromKtx(buffer: ByteBuffer, key: String? = null) {
+        val cacheKey = if (key != null) "ibl_$key" else null
+        var newIndirectLight: IndirectLight? = null
+        var newIndirectLightCubemap: Texture? = null
 
-    fun setSkyboxFromKtx(buffer: ByteBuffer) {
-        val options = KTX1Loader.Options().apply { srgb = true }
-        val bundle = KTX1Loader.createSkybox(engine, buffer, options)
-        skybox?.let { engine.destroySkybox(it) }
-        skyboxCubemap?.let { engine.destroyTexture(it) }
-        skybox = bundle.skybox
-        skyboxCubemap = bundle.cubemap
-        scene.skybox = if (environmentEnabled) skybox else null
-    }
-
-    fun setHdriFromHdr(buffer: ByteBuffer) {
-        val hdrOptions = HDRLoader.Options().apply {
-            desiredFormat = Texture.InternalFormat.R11F_G11F_B10F
+        if (cacheKey != null) {
+            val cached = EnvironmentCache.retain(cacheKey)
+            if (cached != null) {
+                newIndirectLight = cached.indirectLight
+                newIndirectLightCubemap = cached.iblTexture
+            }
         }
-        val hdrTexture = HDRLoader.createTexture(engine, buffer, hdrOptions)
-            ?: run {
+
+        if (newIndirectLight == null) {
+            val options = KTX1Loader.Options().apply { srgb = false }
+            val bundle = KTX1Loader.createIndirectLight(engine, buffer, options)
+            newIndirectLight = bundle.indirectLight
+            newIndirectLightCubemap = bundle.cubemap
+
+            if (cacheKey != null) {
+                EnvironmentCache.add(cacheKey, EnvironmentResource(newIndirectLight, null, null, newIndirectLightCubemap))
+            }
+        }
+
+        if (currentIblKey != null) {
+            EnvironmentCache.release(currentIblKey!!, engine)
+        } else {
+            indirectLight?.let { engine.destroyIndirectLight(it) }
+            indirectLightCubemap?.let { engine.destroyTexture(it) }
+        }
+
+        indirectLight = newIndirectLight
+        indirectLightCubemap = newIndirectLightCubemap
+        scene.indirectLight = indirectLight
+        currentIblKey = cacheKey
+    }
+
+    fun setSkyboxFromKtx(buffer: ByteBuffer, key: String? = null) {
+        val cacheKey = if (key != null) "skybox_$key" else null
+        var newSkybox: Skybox? = null
+        var newSkyboxCubemap: Texture? = null
+
+        if (cacheKey != null) {
+            val cached = EnvironmentCache.retain(cacheKey)
+            if (cached != null) {
+                newSkybox = cached.skybox
+                newSkyboxCubemap = cached.skyboxTexture
+            }
+        }
+
+        if (newSkybox == null) {
+            val options = KTX1Loader.Options().apply { srgb = true }
+            val bundle = KTX1Loader.createSkybox(engine, buffer, options)
+            newSkybox = bundle.skybox
+            newSkyboxCubemap = bundle.cubemap
+
+            if (cacheKey != null) {
+                EnvironmentCache.add(cacheKey, EnvironmentResource(null, newSkybox, newSkyboxCubemap, null))
+            }
+        }
+
+        if (currentSkyboxKey != null) {
+            EnvironmentCache.release(currentSkyboxKey!!, engine)
+        } else {
+            skybox?.let { engine.destroySkybox(it) }
+            skyboxCubemap?.let { engine.destroyTexture(it) }
+        }
+
+        skybox = newSkybox
+        skyboxCubemap = newSkyboxCubemap
+        scene.skybox = if (environmentEnabled) skybox else null
+        currentSkyboxKey = cacheKey
+    }
+
+    fun setHdriFromHdr(buffer: ByteBuffer, key: String? = null) {
+        val cacheKey = if (key != null) "hdr_$key" else null
+        
+        var newIndirectLight: IndirectLight? = null
+        var newSkybox: Skybox? = null
+        var newIblTex: Texture? = null
+        var newSkyTex: Texture? = null
+
+        if (cacheKey != null) {
+            val cached = EnvironmentCache.retain(cacheKey)
+            if (cached != null) {
+                newIndirectLight = cached.indirectLight
+                newSkybox = cached.skybox
+                newSkyTex = cached.skyboxTexture
+                newIblTex = cached.iblTexture
+                EnvironmentCache.retain(cacheKey)
+            }
+        }
+
+        if (newIndirectLight == null) {
+            val hdrOptions = HDRLoader.Options().apply {
+                desiredFormat = Texture.InternalFormat.R11F_G11F_B10F
+            }
+            val hdrTexture = HDRLoader.createTexture(engine, buffer, hdrOptions)
+            
+            if (hdrTexture == null) {
                 eventEmitter("error", "Failed to decode HDRI texture.")
                 return
             }
-        val iblContext = IBLPrefilterContext(engine)
-        val equirectToCubemap = IBLPrefilterContext.EquirectangularToCubemap(iblContext)
-        val cubemap = equirectToCubemap.run(hdrTexture)
-        equirectToCubemap.destroy()
-        val specularFilter = IBLPrefilterContext.SpecularFilter(iblContext)
-        val specularCubemap = specularFilter.run(cubemap)
-        specularFilter.destroy()
-        iblContext.destroy()
-        engine.destroyTexture(hdrTexture)
 
-        indirectLight?.let { engine.destroyIndirectLight(it) }
-        indirectLightCubemap?.let { engine.destroyTexture(it) }
-        skybox?.let { engine.destroySkybox(it) }
-        skyboxCubemap?.let { engine.destroyTexture(it) }
+            val iblContext = IBLPrefilterContext(engine)
+            val equirectToCubemap = IBLPrefilterContext.EquirectangularToCubemap(iblContext)
+            val cubemap = equirectToCubemap.run(hdrTexture)
+            equirectToCubemap.destroy()
+            val specularFilter = IBLPrefilterContext.SpecularFilter(iblContext)
+            val specularCubemap = specularFilter.run(cubemap)
+            specularFilter.destroy()
+            iblContext.destroy()
+            engine.destroyTexture(hdrTexture)
 
-        indirectLight = IndirectLight.Builder()
-            .reflections(specularCubemap)
-            .irradiance(cubemap)
-            .build(engine)
-        indirectLightCubemap = specularCubemap
+            newIndirectLight = IndirectLight.Builder()
+                .reflections(specularCubemap)
+                .irradiance(cubemap)
+                .build(engine)
+            newIblTex = specularCubemap
+
+            newSkybox = Skybox.Builder().environment(cubemap).build(engine)
+            newSkyTex = cubemap
+
+            if (cacheKey != null) {
+                val res = EnvironmentResource(newIndirectLight, newSkybox, newSkyTex, newIblTex)
+                EnvironmentCache.add(cacheKey, res)
+                EnvironmentCache.retain(cacheKey)
+            }
+        }
+
+        if (currentIblKey != null) {
+            EnvironmentCache.release(currentIblKey!!, engine)
+        } else {
+            indirectLight?.let { engine.destroyIndirectLight(it) }
+            indirectLightCubemap?.let { engine.destroyTexture(it) }
+        }
+        
+        if (currentSkyboxKey != null) {
+            EnvironmentCache.release(currentSkyboxKey!!, engine)
+        } else {
+            skybox?.let { engine.destroySkybox(it) }
+            skyboxCubemap?.let { engine.destroyTexture(it) }
+        }
+
+        indirectLight = newIndirectLight
+        indirectLightCubemap = newIblTex
         scene.indirectLight = indirectLight
 
-        skybox = Skybox.Builder().environment(cubemap).build(engine)
-        skyboxCubemap = cubemap
+        skybox = newSkybox
+        skyboxCubemap = newSkyTex
         scene.skybox = if (environmentEnabled) skybox else null
+        
+        currentIblKey = cacheKey
+        currentSkyboxKey = cacheKey
     }
 
     private fun ensureAssetLoader(): AssetLoader {

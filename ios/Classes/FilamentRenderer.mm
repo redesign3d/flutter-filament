@@ -61,6 +61,70 @@ using namespace utils;
 @end
 
 namespace {
+#include <unordered_map>
+#include <mutex>
+
+struct EnvironmentResource {
+    IndirectLight* indirectLight = nullptr;
+    Skybox* skybox = nullptr;
+    Texture* skyboxTexture = nullptr;
+    Texture* iblTexture = nullptr;
+};
+
+class EnvironmentCache {
+public:
+    static EnvironmentCache& Get() {
+        static EnvironmentCache instance;
+        return instance;
+    }
+
+    struct Entry {
+        EnvironmentResource resource;
+        int refCount = 0;
+    };
+
+    EnvironmentResource* retain(const std::string& key) {
+        std::lock_guard<std::mutex> lock(mutex_);
+        auto it = cache_.find(key);
+        if (it != cache_.end()) {
+            it->second.refCount++;
+            return &it->second.resource;
+        }
+        return nullptr;
+    }
+
+    void add(const std::string& key, const EnvironmentResource& resource) {
+        std::lock_guard<std::mutex> lock(mutex_);
+        Entry entry;
+        entry.resource = resource;
+        entry.refCount = 1;
+        cache_[key] = entry;
+    }
+
+    void release(const std::string& key, Engine* engine) {
+        std::lock_guard<std::mutex> lock(mutex_);
+        auto it = cache_.find(key);
+        if (it != cache_.end()) {
+            it->second.refCount--;
+            if (it->second.refCount <= 0) {
+                 destroyResource(it->second.resource, engine);
+                 cache_.erase(it);
+            }
+        }
+    }
+
+private:
+    void destroyResource(const EnvironmentResource& res, Engine* engine) {
+         if (res.indirectLight) engine->destroy(res.indirectLight);
+         if (res.skybox) engine->destroy(res.skybox);
+         if (res.skyboxTexture) engine->destroy(res.skyboxTexture);
+         if (res.iblTexture) engine->destroy(res.iblTexture);
+    }
+
+    std::unordered_map<std::string, Entry> cache_;
+    std::mutex mutex_;
+};
+
 Engine* SharedEngine() {
     static Engine* engine = []() {
 #if DEBUG
@@ -695,6 +759,8 @@ std::vector<uint32_t> BuildWireframeEdges(const std::vector<uint32_t>& indices, 
     int _msaaSamples;
     bool _dynamicResolutionEnabled;
     bool _environmentEnabled;
+    std::string _currentIblKey;
+    std::string _currentSkyboxKey;
     Material* _debugLineMaterial;
     MaterialInstance* _wireframeMaterialInstance;
     VertexBuffer* _wireframeVertexBuffer;
@@ -970,64 +1036,134 @@ std::vector<uint32_t> BuildWireframeEdges(const std::vector<uint32_t>& indices, 
     return YES;
 }
 
-- (void)setIndirectLightFromKTX:(NSData *)data {
+- (void)setIndirectLightFromKTX:(NSData *)data key:(nullable NSString *)key {
     EnsureJobSystemAdopted(_engine);
     if (_scene == nullptr) {
         return;
     }
     const BOOL wasPaused = _paused;
     _paused = YES;
+
+    std::string cacheKey = "";
+    if (key != nil) {
+        cacheKey = std::string("ibl_") + std::string([key UTF8String]);
+    }
+
+    IndirectLight* newIndirectLight = nullptr;
+    Texture* newIblTexture = nullptr;
+
+    if (!cacheKey.empty()) {
+        EnvironmentResource* cached = EnvironmentCache::Get().retain(cacheKey);
+        if (cached) {
+            newIndirectLight = cached->indirectLight;
+            newIblTexture = cached->iblTexture;
+        }
+    }
+
+    if (newIndirectLight == nullptr) {
+        const uint8_t* bytes = reinterpret_cast<const uint8_t*>(data.bytes);
+        auto* bundle = new image::Ktx1Bundle(bytes, (uint32_t)data.length);
+        math::float3 sh[9];
+        const bool hasSh = bundle->getSphericalHarmonics(sh);
+        newIblTexture = ktxreader::Ktx1Reader::createTexture(_engine, bundle, true);
+        IndirectLight::Builder builder;
+        builder.reflections(newIblTexture);
+        if (hasSh) {
+            builder.irradiance(3, sh);
+        }
+        newIndirectLight = builder.build(*_engine);
+
+        if (!cacheKey.empty()) {
+            EnvironmentResource res;
+            res.indirectLight = newIndirectLight;
+            res.iblTexture = newIblTexture;
+            EnvironmentCache::Get().add(cacheKey, res);
+        }
+    }
+
     _scene->setIndirectLight(nullptr);
     _engine->flushAndWait();
-    if (_indirectLight) {
-        _engine->destroy(_indirectLight);
-        _indirectLight = nullptr;
+    
+    if (!_currentIblKey.empty()) {
+        EnvironmentCache::Get().release(_currentIblKey, _engine);
+    } else {
+        if (_indirectLight) {
+            _engine->destroy(_indirectLight);
+        }
+        if (_iblTexture) {
+            _engine->destroy(_iblTexture);
+        }
     }
-    if (_iblTexture) {
-        _engine->destroy(_iblTexture);
-        _iblTexture = nullptr;
-    }
-    const uint8_t* bytes = reinterpret_cast<const uint8_t*>(data.bytes);
-    auto* bundle = new image::Ktx1Bundle(bytes, (uint32_t)data.length);
-    math::float3 sh[9];
-    const bool hasSh = bundle->getSphericalHarmonics(sh);
-    _iblTexture = ktxreader::Ktx1Reader::createTexture(_engine, bundle, true);
-    IndirectLight::Builder builder;
-    builder.reflections(_iblTexture);
-    if (hasSh) {
-        builder.irradiance(3, sh);
-    }
-    _indirectLight = builder.build(*_engine);
+    
+    _indirectLight = newIndirectLight;
+    _iblTexture = newIblTexture;
+    _currentIblKey = cacheKey;
+
     _scene->setIndirectLight(_indirectLight);
     _paused = wasPaused;
 }
 
-- (void)setSkyboxFromKTX:(NSData *)data {
+- (void)setSkyboxFromKTX:(NSData *)data key:(nullable NSString *)key {
     EnsureJobSystemAdopted(_engine);
     if (_scene == nullptr) {
         return;
     }
     const BOOL wasPaused = _paused;
     _paused = YES;
+
+    std::string cacheKey = "";
+    if (key != nil) {
+        cacheKey = std::string("skybox_") + std::string([key UTF8String]);
+    }
+
+    Skybox* newSkybox = nullptr;
+    Texture* newSkyboxTexture = nullptr;
+
+    if (!cacheKey.empty()) {
+        EnvironmentResource* cached = EnvironmentCache::Get().retain(cacheKey);
+        if (cached) {
+            newSkybox = cached->skybox;
+            newSkyboxTexture = cached->skyboxTexture;
+        }
+    }
+
+    if (newSkybox == nullptr) {
+        const uint8_t* bytes = reinterpret_cast<const uint8_t*>(data.bytes);
+        auto* bundle = new image::Ktx1Bundle(bytes, (uint32_t)data.length);
+        newSkyboxTexture = ktxreader::Ktx1Reader::createTexture(_engine, bundle, true);
+        newSkybox = Skybox::Builder().environment(newSkyboxTexture).build(*_engine);
+
+        if (!cacheKey.empty()) {
+            EnvironmentResource res;
+            res.skybox = newSkybox;
+            res.skyboxTexture = newSkyboxTexture;
+            EnvironmentCache::Get().add(cacheKey, res);
+        }
+    }
+
     _scene->setSkybox(nullptr);
     _engine->flushAndWait();
-    if (_skybox) {
-        _engine->destroy(_skybox);
-        _skybox = nullptr;
+
+    if (!_currentSkyboxKey.empty()) {
+        EnvironmentCache::Get().release(_currentSkyboxKey, _engine);
+    } else {
+        if (_skybox) {
+            _engine->destroy(_skybox);
+        }
+        if (_skyboxTexture) {
+            _engine->destroy(_skyboxTexture);
+        }
     }
-    if (_skyboxTexture) {
-        _engine->destroy(_skyboxTexture);
-        _skyboxTexture = nullptr;
-    }
-    const uint8_t* bytes = reinterpret_cast<const uint8_t*>(data.bytes);
-    auto* bundle = new image::Ktx1Bundle(bytes, (uint32_t)data.length);
-    _skyboxTexture = ktxreader::Ktx1Reader::createTexture(_engine, bundle, true);
-    _skybox = Skybox::Builder().environment(_skyboxTexture).build(*_engine);
+    
+    _skybox = newSkybox;
+    _skyboxTexture = newSkyboxTexture;
+    _currentSkyboxKey = cacheKey;
+
     _scene->setSkybox(_environmentEnabled ? _skybox : nullptr);
     _paused = wasPaused;
 }
 
-- (BOOL)setHdriFromHDR:(NSData *)data error:(NSString * _Nullable * _Nullable)error {
+- (BOOL)setHdriFromHDR:(NSData *)data key:(nullable NSString *)key error:(NSString * _Nullable * _Nullable)error {
     EnsureJobSystemAdopted(_engine);
     if (_scene == nullptr) {
         if (error) {
@@ -1037,105 +1173,155 @@ std::vector<uint32_t> BuildWireframeEdges(const std::vector<uint32_t>& indices, 
     }
     const BOOL wasPaused = _paused;
     _paused = YES;
-    HdriImage hdrImage;
-    std::string decodeError;
-    const uint8_t* bytes = reinterpret_cast<const uint8_t*>(data.bytes);
-    if (!DecodeRadianceHdr(bytes, data.length, hdrImage, decodeError)) {
-        if (error) {
-            *error = [NSString stringWithUTF8String:decodeError.c_str()];
-        }
-        _paused = wasPaused;
-        return NO;
-    }
-    image::LinearImage baseImage(hdrImage.width, hdrImage.height, 3);
-    for (uint32_t y = 0; y < hdrImage.height; ++y) {
-        for (uint32_t x = 0; x < hdrImage.width; ++x) {
-            const size_t idx = static_cast<size_t>(y) * hdrImage.width + x;
-            auto* pixel = baseImage.get<math::float3>(x, y);
-            *pixel = hdrImage.pixels[idx];
-        }
-    }
-    const uint32_t mipCount = image::getMipmapCount(baseImage);
-    const uint32_t levels = mipCount + 1;
-    Texture* equirect = Texture::Builder()
-        .width(hdrImage.width)
-        .height(hdrImage.height)
-        .levels(levels)
-        .sampler(Texture::Sampler::SAMPLER_2D)
-        .format(Texture::InternalFormat::R11F_G11F_B10F)
-        .usage(Texture::Usage::DEFAULT | Texture::Usage::BLIT_SRC | Texture::Usage::BLIT_DST |
-               Texture::Usage::GEN_MIPMAPPABLE)
-        .build(*_engine);
 
-    const size_t baseSize = static_cast<size_t>(hdrImage.width) * hdrImage.height * sizeof(uint32_t);
-    auto basePacked = image::fromLinearToRGB_10_11_11_REV(baseImage);
-    Texture::PixelBufferDescriptor baseDescriptor(
-        basePacked.release(),
-        baseSize,
-        Texture::Format::RGB,
-        Texture::Type::UINT_10F_11F_11F_REV,
-        ReleaseNewBuffer
-    );
-    equirect->setImage(*_engine, 0, std::move(baseDescriptor));
-    if (levels > 1) {
-        equirect->generateMipmaps(*_engine);
+    std::string cacheKey = "";
+    if (key != nil) {
+        cacheKey = std::string("hdr_") + std::string([key UTF8String]);
     }
 
-    if (!_iblPrefilterContext) {
-        _iblPrefilterContext = std::make_unique<IBLPrefilterContext>(*_engine);
-        _iblEquirectToCubemap = std::make_unique<IBLPrefilterContext::EquirectangularToCubemap>(
-            *_iblPrefilterContext);
-        _iblSpecularFilter = std::make_unique<IBLPrefilterContext::SpecularFilter>(
-            *_iblPrefilterContext);
+    IndirectLight* newIndirectLight = nullptr;
+    Skybox* newSkybox = nullptr;
+    Texture* newSkyboxTexture = nullptr;
+    Texture* newIblTexture = nullptr;
+
+    if (!cacheKey.empty()) {
+        EnvironmentResource* cached = EnvironmentCache::Get().retain(cacheKey);
+        if (cached) {
+            newIndirectLight = cached->indirectLight;
+            newSkybox = cached->skybox;
+            newSkyboxTexture = cached->skyboxTexture;
+            newIblTexture = cached->iblTexture;
+            EnvironmentCache::Get().retain(cacheKey);
+        }
     }
-    Texture* cubemap = (*_iblEquirectToCubemap)(equirect, nullptr);
-    Texture* reflections = (*_iblSpecularFilter)(cubemap, nullptr);
-    _engine->flushAndWait();
-    _engine->destroy(equirect);
-    if (cubemap == nullptr || reflections == nullptr) {
-        if (cubemap) {
-            _engine->destroy(cubemap);
+
+    if (newIndirectLight == nullptr) {
+        HdriImage hdrImage;
+        std::string decodeError;
+        const uint8_t* bytes = reinterpret_cast<const uint8_t*>(data.bytes);
+        if (!DecodeRadianceHdr(bytes, data.length, hdrImage, decodeError)) {
+            if (error) {
+                *error = [NSString stringWithUTF8String:decodeError.c_str()];
+            }
+            _paused = wasPaused;
+            return NO;
         }
-        if (reflections) {
-            _engine->destroy(reflections);
+        image::LinearImage baseImage(hdrImage.width, hdrImage.height, 3);
+        for (uint32_t y = 0; y < hdrImage.height; ++y) {
+            for (uint32_t x = 0; x < hdrImage.width; ++x) {
+                const size_t idx = static_cast<size_t>(y) * hdrImage.width + x;
+                auto* pixel = baseImage.get<math::float3>(x, y);
+                *pixel = hdrImage.pixels[idx];
+            }
         }
-        if (error) {
-            *error = @"Failed to prefilter HDRI.";
+        const uint32_t mipCount = image::getMipmapCount(baseImage);
+        const uint32_t levels = mipCount + 1;
+        Texture* equirect = Texture::Builder()
+            .width(hdrImage.width)
+            .height(hdrImage.height)
+            .levels(levels)
+            .sampler(Texture::Sampler::SAMPLER_2D)
+            .format(Texture::InternalFormat::R11F_G11F_B10F)
+            .usage(Texture::Usage::DEFAULT | Texture::Usage::BLIT_SRC | Texture::Usage::BLIT_DST |
+                   Texture::Usage::GEN_MIPMAPPABLE)
+            .build(*_engine);
+
+        const size_t baseSize = static_cast<size_t>(hdrImage.width) * hdrImage.height * sizeof(uint32_t);
+        auto basePacked = image::fromLinearToRGB_10_11_11_REV(baseImage);
+        Texture::PixelBufferDescriptor baseDescriptor(
+            basePacked.release(),
+            baseSize,
+            Texture::Format::RGB,
+            Texture::Type::UINT_10F_11F_11F_REV,
+            ReleaseNewBuffer
+        );
+        equirect->setImage(*_engine, 0, std::move(baseDescriptor));
+        if (levels > 1) {
+            equirect->generateMipmaps(*_engine);
         }
-        _paused = wasPaused;
-        return NO;
+
+        if (!_iblPrefilterContext) {
+            _iblPrefilterContext = std::make_unique<IBLPrefilterContext>(*_engine);
+            _iblEquirectToCubemap = std::make_unique<IBLPrefilterContext::EquirectangularToCubemap>(
+                *_iblPrefilterContext);
+            _iblSpecularFilter = std::make_unique<IBLPrefilterContext::SpecularFilter>(
+                *_iblPrefilterContext);
+        }
+        Texture* cubemap = (*_iblEquirectToCubemap)(equirect, nullptr);
+        Texture* reflections = (*_iblSpecularFilter)(cubemap, nullptr);
+        _engine->flushAndWait();
+        _engine->destroy(equirect);
+        if (cubemap == nullptr || reflections == nullptr) {
+            if (cubemap) {
+                _engine->destroy(cubemap);
+            }
+            if (reflections) {
+                _engine->destroy(reflections);
+            }
+            if (error) {
+                *error = @"Failed to prefilter HDRI.";
+            }
+            _paused = wasPaused;
+            return NO;
+        }
+
+        newIndirectLight = IndirectLight::Builder()
+            .reflections(reflections)
+            .irradiance(cubemap)
+            .build(*_engine);
+        newIblTexture = reflections;
+
+        newSkyboxTexture = cubemap;
+        newSkybox = Skybox::Builder().environment(newSkyboxTexture).build(*_engine);
+
+        if (!cacheKey.empty()) {
+            EnvironmentResource res;
+            res.indirectLight = newIndirectLight;
+            res.skybox = newSkybox;
+            res.skyboxTexture = newSkyboxTexture;
+            res.iblTexture = newIblTexture;
+            EnvironmentCache::Get().add(cacheKey, res);
+            EnvironmentCache::Get().retain(cacheKey);
+        }
     }
 
     _scene->setIndirectLight(nullptr);
     _scene->setSkybox(nullptr);
     _engine->flushAndWait();
-    if (_indirectLight) {
-        _engine->destroy(_indirectLight);
-        _indirectLight = nullptr;
+    
+    if (!_currentIblKey.empty()) {
+        EnvironmentCache::Get().release(_currentIblKey, _engine);
+    } else {
+        if (_indirectLight) {
+            _engine->destroy(_indirectLight);
+        }
+        if (_iblTexture) {
+            _engine->destroy(_iblTexture);
+        }
     }
-    if (_iblTexture) {
-        _engine->destroy(_iblTexture);
-        _iblTexture = nullptr;
-    }
-    if (_skybox) {
-        _engine->destroy(_skybox);
-        _skybox = nullptr;
-    }
-    if (_skyboxTexture) {
-        _engine->destroy(_skyboxTexture);
-        _skyboxTexture = nullptr;
+    
+    if (!_currentSkyboxKey.empty()) {
+        EnvironmentCache::Get().release(_currentSkyboxKey, _engine);
+    } else {
+        if (_skybox) {
+            _engine->destroy(_skybox);
+        }
+        if (_skyboxTexture) {
+            _engine->destroy(_skyboxTexture);
+        }
     }
 
-    IndirectLight::Builder builder;
-    builder.reflections(reflections);
-    builder.irradiance(cubemap);
-    _indirectLight = builder.build(*_engine);
-    _iblTexture = reflections;
+    _indirectLight = newIndirectLight;
+    _iblTexture = newIblTexture;
     _scene->setIndirectLight(_indirectLight);
 
-    _skyboxTexture = cubemap;
-    _skybox = Skybox::Builder().environment(_skyboxTexture).build(*_engine);
+    _skybox = newSkybox;
+    _skyboxTexture = newSkyboxTexture;
     _scene->setSkybox(_environmentEnabled ? _skybox : nullptr);
+    
+    _currentIblKey = cacheKey;
+    _currentSkyboxKey = cacheKey;
+
     _paused = wasPaused;
     return YES;
 }
@@ -1445,22 +1631,35 @@ std::vector<uint32_t> BuildWireframeEdges(const std::vector<uint32_t>& indices, 
         delete _materialProvider;
         _materialProvider = nullptr;
     }
-    if (_indirectLight) {
-        _engine->destroy(_indirectLight);
-        _indirectLight = nullptr;
+
+    if (!_currentIblKey.empty()) {
+        EnvironmentCache::Get().release(_currentIblKey, _engine);
+        _currentIblKey = "";
+    } else {
+        if (_indirectLight) {
+            _engine->destroy(_indirectLight);
+        }
+        if (_iblTexture) {
+            _engine->destroy(_iblTexture);
+        }
     }
-    if (_iblTexture) {
-        _engine->destroy(_iblTexture);
-        _iblTexture = nullptr;
+    _indirectLight = nullptr;
+    _iblTexture = nullptr;
+
+    if (!_currentSkyboxKey.empty()) {
+        EnvironmentCache::Get().release(_currentSkyboxKey, _engine);
+        _currentSkyboxKey = "";
+    } else {
+        if (_skybox) {
+            _engine->destroy(_skybox);
+        }
+        if (_skyboxTexture) {
+            _engine->destroy(_skyboxTexture);
+        }
     }
-    if (_skybox) {
-        _engine->destroy(_skybox);
-        _skybox = nullptr;
-    }
-    if (_skyboxTexture) {
-        _engine->destroy(_skyboxTexture);
-        _skyboxTexture = nullptr;
-    }
+    _skybox = nullptr;
+    _skyboxTexture = nullptr;
+
     if (_colorGrading) {
         _engine->destroy(_colorGrading);
         _colorGrading = nullptr;

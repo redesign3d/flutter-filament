@@ -233,7 +233,7 @@ final class FilamentController {
       do {
         let data = try Data(contentsOf: url)
         self.renderLoop.perform {
-          renderer.setIndirectLightFromKTX(data)
+          renderer.setIndirectLightFromKTX(data, key: ktxPath)
           DispatchQueue.main.async { result(nil) }
         }
       } catch {
@@ -257,7 +257,7 @@ final class FilamentController {
       do {
         let data = try Data(contentsOf: url)
         self.renderLoop.perform {
-          renderer.setSkyboxFromKTX(data)
+          renderer.setSkyboxFromKTX(data, key: ktxPath)
           DispatchQueue.main.async { result(nil) }
         }
       } catch {
@@ -282,7 +282,7 @@ final class FilamentController {
         let data = try Data(contentsOf: url)
         self.renderLoop.perform {
           var message: NSString?
-          let success = renderer.setHdriFromHDR(data, error: &message)
+          let success = renderer.setHdriFromHDR(data, key: hdrPath, error: &message)
           DispatchQueue.main.async {
             if success {
               result(nil)
@@ -313,7 +313,7 @@ final class FilamentController {
         let cached = try self.cacheManager.getOrDownload(url: url)
         let data = try Data(contentsOf: cached)
         self.renderLoop.perform {
-          renderer.setIndirectLightFromKTX(data)
+          renderer.setIndirectLightFromKTX(data, key: urlString)
           DispatchQueue.main.async { result(nil) }
         }
       } catch {
@@ -338,7 +338,7 @@ final class FilamentController {
         let data = try Data(contentsOf: cached)
         self.renderLoop.perform {
           var message: NSString?
-          let success = renderer.setHdriFromHDR(data, error: &message)
+          let success = renderer.setHdriFromHDR(data, key: urlString, error: &message)
           DispatchQueue.main.async {
             if success {
               result(nil)
@@ -369,7 +369,7 @@ final class FilamentController {
         let cached = try self.cacheManager.getOrDownload(url: url)
         let data = try Data(contentsOf: cached)
         self.renderLoop.perform {
-          renderer.setSkyboxFromKTX(data)
+          renderer.setSkyboxFromKTX(data, key: urlString)
           DispatchQueue.main.async { result(nil) }
         }
       } catch {

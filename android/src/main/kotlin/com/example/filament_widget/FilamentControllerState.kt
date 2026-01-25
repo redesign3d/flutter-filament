@@ -195,7 +195,7 @@ class FilamentControllerState(
             try {
                 val buffer = readAssetBuffer(resolvedPath)
                 renderThread.post {
-                    viewer?.setIndirectLightFromKtx(buffer)
+                    viewer?.setIndirectLightFromKtx(buffer, assetPath)
                     postSuccess(result)
                 }
             } catch (e: Exception) {
@@ -210,7 +210,7 @@ class FilamentControllerState(
             try {
                 val buffer = readAssetBuffer(resolvedPath)
                 renderThread.post {
-                    viewer?.setSkyboxFromKtx(buffer)
+                    viewer?.setSkyboxFromKtx(buffer, assetPath)
                     postSuccess(result)
                 }
             } catch (e: Exception) {
@@ -226,7 +226,7 @@ class FilamentControllerState(
                 val buffer = readAssetBuffer(resolvedPath)
                 renderThread.post {
                     try {
-                        viewer?.setHdriFromHdr(buffer)
+                        viewer?.setHdriFromHdr(buffer, assetPath)
                         postSuccess(result)
                     } catch (e: Exception) {
                         postError(result, e.message ?: "Failed to load HDRI asset.")
@@ -244,7 +244,7 @@ class FilamentControllerState(
                 val file = cacheManager.getOrDownload(url)
                 val buffer = mapFileBuffer(file) ?: readFileBuffer(file)
                 renderThread.post {
-                    viewer?.setIndirectLightFromKtx(buffer)
+                    viewer?.setIndirectLightFromKtx(buffer, url)
                     postSuccess(result)
                 }
             } catch (e: Exception) {
@@ -259,7 +259,7 @@ class FilamentControllerState(
                 val file = cacheManager.getOrDownload(url)
                 val buffer = mapFileBuffer(file) ?: readFileBuffer(file)
                 renderThread.post {
-                    viewer?.setSkyboxFromKtx(buffer)
+                    viewer?.setSkyboxFromKtx(buffer, url)
                     postSuccess(result)
                 }
             } catch (e: Exception) {
@@ -275,7 +275,7 @@ class FilamentControllerState(
                 val buffer = mapFileBuffer(file) ?: readFileBuffer(file)
                 renderThread.post {
                     try {
-                        viewer?.setHdriFromHdr(buffer)
+                        viewer?.setHdriFromHdr(buffer, url)
                         postSuccess(result)
                     } catch (e: Exception) {
                         postError(result, e.message ?: "Failed to load HDRI URL.")

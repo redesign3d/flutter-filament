@@ -20,11 +20,11 @@ typedef void (^FilamentFrameCallback)(void);
 
 - (BOOL)finishModelLoad:(NSDictionary<NSString *, NSData *> *)resources;
 
-- (void)setIndirectLightFromKTX:(NSData *)data;
+- (void)setIndirectLightFromKTX:(NSData *)data key:(nullable NSString *)key;
 
-- (void)setSkyboxFromKTX:(NSData *)data;
+- (void)setSkyboxFromKTX:(NSData *)data key:(nullable NSString *)key;
 
-- (BOOL)setHdriFromHDR:(NSData *)data error:(NSString * _Nullable * _Nullable)error;
+- (BOOL)setHdriFromHDR:(NSData *)data key:(nullable NSString *)key error:(NSString * _Nullable * _Nullable)error;
 
 - (void)frameModel:(BOOL)useWorldOrigin;
 
