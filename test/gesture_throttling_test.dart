@@ -16,9 +16,13 @@ void main() {
   setUp(() {
     log.clear();
     controlMessages.clear();
+    var nextId = 1;
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
         .setMockMethodCallHandler(channel, (MethodCall methodCall) async {
       log.add(methodCall);
+      if (methodCall.method == 'createController') {
+        return nextId++;
+      }
       return null;
     });
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger

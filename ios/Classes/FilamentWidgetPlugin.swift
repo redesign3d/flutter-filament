@@ -10,6 +10,7 @@ public class FilamentWidgetPlugin: NSObject, FlutterPlugin, FlutterStreamHandler
   private var controllers: [Int: FilamentController] = [:]
   private var eventSink: FlutterEventSink?
   private var observingLifecycle = false
+  private var nextControllerId: Int64 = 1
 
   init(registrar: FlutterPluginRegistrar) {
     self.registrar = registrar
@@ -203,14 +204,8 @@ public class FilamentWidgetPlugin: NSObject, FlutterPlugin, FlutterStreamHandler
   }
 
   private func handleCreateController(_ call: FlutterMethodCall, result: FilamentResultOnce) {
-    guard
-      let args = call.arguments as? [String: Any],
-      let controllerId = args["controllerId"] as? Int
-    else {
-      result.error(code: FilamentErrors.invalidArgs, message: "Missing controllerId.")
-      return
-    }
-    let debugFeaturesEnabled = args["debugFeaturesEnabled"] as? Bool ?? true
+    let args = call.arguments as? [String: Any]
+    let debugFeaturesEnabled = args?["debugFeaturesEnabled"] as? Bool ?? true
     startObservingLifecycleIfNeeded()
     if textureRegistry == nil {
       textureRegistry = registrar?.textures()
@@ -224,6 +219,10 @@ public class FilamentWidgetPlugin: NSObject, FlutterPlugin, FlutterStreamHandler
       result.error(code: FilamentErrors.native, message: "Filament plugin not ready.")
       return
     }
+    guard let controllerId = generateControllerId() else {
+      result.error(code: FilamentErrors.native, message: "Failed to allocate controller id.")
+      return
+    }
     let controller = FilamentController(
       controllerId: controllerId,
       textureRegistry: textureRegistry,
@@ -235,7 +234,22 @@ public class FilamentWidgetPlugin: NSObject, FlutterPlugin, FlutterStreamHandler
       self?.emitEvent(controllerId: controllerId, type: type, message: message)
     }
     controllers[controllerId] = controller
-    result.success(nil)
+    result.success(controllerId)
+  }
+
+  private func generateControllerId() -> Int? {
+    for _ in 0..<10 {
+      let candidate = nextControllerId
+      nextControllerId += 1
+      if candidate > Int64(Int32.max) {
+        return nil
+      }
+      let id = Int(candidate)
+      if controllers[id] == nil {
+        return id
+      }
+    }
+    return nil
   }
 
   private func startObservingLifecycleIfNeeded() {
