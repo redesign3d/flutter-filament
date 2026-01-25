@@ -8,6 +8,7 @@ final class FilamentController {
   private let cacheManager: FilamentCacheManager
   private let assetLookup: (String) -> String
   private let eventEmitter: (String, String) -> Void
+  private let debugFeaturesEnabled: Bool
 
   private var renderer: FilamentRenderer?
   private var texture: FilamentTexture?
@@ -19,6 +20,7 @@ final class FilamentController {
     renderLoop: FilamentRenderLoop,
     cacheManager: FilamentCacheManager,
     assetLookup: @escaping (String) -> String,
+    debugFeaturesEnabled: Bool,
     eventEmitter: @escaping (String, String) -> Void
   ) {
     self.controllerId = controllerId
@@ -26,6 +28,7 @@ final class FilamentController {
     self.renderLoop = renderLoop
     self.cacheManager = cacheManager
     self.assetLookup = assetLookup
+    self.debugFeaturesEnabled = debugFeaturesEnabled
     self.eventEmitter = eventEmitter
   }
 
@@ -46,6 +49,7 @@ final class FilamentController {
     let texture = FilamentTexture(pixelBuffer: pixelBuffer)
     let textureId = textureRegistry.register(texture)
     let renderer = FilamentRenderer()
+    renderer.setDebugFeaturesEnabled(debugFeaturesEnabled)
     renderer.setFpsCallback { [weak self] fps in
       guard let self else { return }
       let message = String(format: "%.2f", locale: Locale(identifier: "en_US_POSIX"), fps)
@@ -663,6 +667,11 @@ final class FilamentController {
   }
 
   func setWireframeEnabled(_ enabled: Bool, result: @escaping FlutterResult) {
+    if enabled && !debugFeaturesEnabled {
+        result(nil)
+        return
+    }
+    
     guard let renderer else {
       result(nil)
       return
@@ -674,6 +683,10 @@ final class FilamentController {
   }
 
   func setBoundingBoxesEnabled(_ enabled: Bool, result: @escaping FlutterResult) {
+    if enabled && !debugFeaturesEnabled {
+        result(nil)
+        return
+    }
     guard let renderer else {
       result(nil)
       return

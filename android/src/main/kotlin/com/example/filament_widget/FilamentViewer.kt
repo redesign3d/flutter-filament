@@ -51,6 +51,7 @@ class FilamentViewer(
     private val assetManager: AssetManager,
     private val eventEmitter: (String, String) -> Unit,
     private val engine: Engine,
+    private val debugFeaturesEnabled: Boolean,
 ) {
     private data class DebugLineRenderable(
         val entity: Int,
@@ -267,7 +268,11 @@ class FilamentViewer(
         pendingAsset = null
         
         // Debug data generation is offloaded to background thread
-        tempResourceData = resourceData
+        if (debugFeaturesEnabled) {
+            tempResourceData = resourceData
+        } else {
+            tempResourceData = null
+        }
         
         animator = asset.instance?.animator
         animationPlaying = false
@@ -279,13 +284,16 @@ class FilamentViewer(
     }
 
     fun updateDebugDataInBackground() {
+        if (!debugFeaturesEnabled) return
         val resources = tempResourceData ?: return
         wireframeLineData = buildWireframeLineData(resources)
     }
 
     fun applyDebugData() {
-        rebuildWireframe()
-        rebuildBoundingBoxes()
+        if (debugFeaturesEnabled) {
+            rebuildWireframe()
+            rebuildBoundingBoxes()
+        }
         tempResourceData = null
         pendingModelData = null
     }
@@ -457,11 +465,19 @@ class FilamentViewer(
     }
 
     fun setWireframeEnabled(enabled: Boolean) {
+        if (enabled && !debugFeaturesEnabled) {
+            logDebug("Ignoring setWireframeEnabled(true) because debugFeaturesEnabled is false.")
+            return
+        }
         wireframeEnabled = enabled
         rebuildWireframe()
     }
 
     fun setBoundingBoxesEnabled(enabled: Boolean) {
+        if (enabled && !debugFeaturesEnabled) {
+            logDebug("Ignoring setBoundingBoxesEnabled(true) because debugFeaturesEnabled is false.")
+            return
+        }
         boundingBoxesEnabled = enabled
         rebuildBoundingBoxes()
     }

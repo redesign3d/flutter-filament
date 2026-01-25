@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -236,7 +237,16 @@ class _FilamentGestureLayerState extends State<_FilamentGestureLayer> {
 }
 
 class FilamentController {
-  FilamentController();
+  FilamentController({
+    this.debugFeaturesEnabled = kDebugMode,
+  });
+
+  /// Whether debug components (wireframes, bounds) can be enabled.
+  ///
+  /// Defaults to `true` in debug builds and `false` in release builds.
+  /// If `false`, calls to `setWireframeEnabled` or `setBoundingBoxesEnabled`
+  /// will be ignored by the native implementation.
+  final bool debugFeaturesEnabled;
 
   static const MethodChannel _methodChannel = MethodChannel('filament_widget');
   static const EventChannel _eventChannel = EventChannel(
@@ -321,6 +331,7 @@ class FilamentController {
     _controllerId = _nextId++;
     await _methodChannel.invokeMethod<void>('createController', {
       'controllerId': _controllerId,
+      'debugFeaturesEnabled': debugFeaturesEnabled,
     });
     if (_disposed) return; // check again after await
 

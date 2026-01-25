@@ -725,6 +725,7 @@ std::vector<uint32_t> BuildWireframeEdges(const std::vector<uint32_t>& indices, 
     bool _hasModelBounds;
     CVPixelBufferRef _pixelBuffer;
     BOOL _paused;
+    BOOL _debugFeaturesEnabled;
     int _width;
     int _height;
 }
@@ -750,6 +751,7 @@ std::vector<uint32_t> BuildWireframeEdges(const std::vector<uint32_t>& indices, 
         _iblTexture = nullptr;
         _skybox = nullptr;
         _skyboxTexture = nullptr;
+        _debugFeaturesEnabled = YES;
         _orbitTarget = math::float3{0.0f, 0.0f, 0.0f};
         _yawDeg = 0.0;
         _pitchDeg = 0.0;
@@ -945,7 +947,11 @@ std::vector<uint32_t> BuildWireframeEdges(const std::vector<uint32_t>& indices, 
         _resourceLoader->evictResourceData();
         return NO;
     }
-    [self buildWireframeData:resources];
+    
+    if (_debugFeaturesEnabled) {
+        [self buildWireframeData:resources];
+    }
+    
     _engine->flushAndWait();
     _pendingAsset->releaseSourceData();
     _pendingSourceData = nil;
@@ -2051,7 +2057,7 @@ std::vector<uint32_t> BuildWireframeEdges(const std::vector<uint32_t>& indices, 
         return;
     }
     [self destroyWireframeRenderable];
-    if (!_wireframeEnabled || !_hasWireframeData) {
+    if (!_wireframeEnabled || !_hasWireframeData || !_debugFeaturesEnabled) {
         return;
     }
     if (_wireframePositions.empty() || _wireframeIndices.empty()) {
@@ -2119,7 +2125,7 @@ std::vector<uint32_t> BuildWireframeEdges(const std::vector<uint32_t>& indices, 
 
 - (void)rebuildBoundsRenderable {
     [self destroyBoundsRenderable];
-    if (!_scene || !_boundingBoxesEnabled || !_hasModelBounds) {
+    if (!_scene || !_boundingBoxesEnabled || !_hasModelBounds || !_debugFeaturesEnabled) {
         return;
     }
     Material* material = [self ensureDebugLineMaterial];
@@ -2263,6 +2269,17 @@ std::vector<uint32_t> BuildWireframeEdges(const std::vector<uint32_t>& indices, 
     _modelCenter = bounds.center();
     _modelExtent = bounds.extent();
     _hasModelBounds = true;
+}
+
+- (void)setDebugFeaturesEnabled:(BOOL)enabled {
+    _debugFeaturesEnabled = enabled;
+    if (!enabled) {
+        [self destroyWireframeRenderable];
+        [self destroyBoundsRenderable];
+    } else {
+        [self updateWireframe];
+        [self rebuildBoundsRenderable];
+    }
 }
 
 @end

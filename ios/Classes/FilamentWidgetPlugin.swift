@@ -187,6 +187,7 @@ public class FilamentWidgetPlugin: NSObject, FlutterPlugin, FlutterStreamHandler
       result(FlutterError(code: "filament_error", message: "Missing controllerId.", details: nil))
       return
     }
+    let debugFeaturesEnabled = args["debugFeaturesEnabled"] as? Bool ?? true
     startObservingLifecycleIfNeeded()
     if textureRegistry == nil {
       textureRegistry = registrar?.textures()
@@ -205,7 +206,8 @@ public class FilamentWidgetPlugin: NSObject, FlutterPlugin, FlutterStreamHandler
       textureRegistry: textureRegistry,
       renderLoop: renderLoop,
       cacheManager: cacheManager,
-      assetLookup: assetLookup
+      assetLookup: assetLookup,
+      debugFeaturesEnabled: debugFeaturesEnabled
     ) { [weak self] type, message in
       self?.emitEvent(controllerId: controllerId, type: type, message: message)
     }

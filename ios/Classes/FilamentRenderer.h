@@ -79,6 +79,8 @@ typedef void (^FilamentFrameCallback)(void);
 
 - (void)setDebugLoggingEnabled:(BOOL)enabled;
 
+- (void)setDebugFeaturesEnabled:(BOOL)enabled;
+
 - (void)setFpsCallback:(nullable FilamentFpsCallback)callback;
 - (void)setFrameCallback:(nullable FilamentFrameCallback)callback;
 - (void)setResourcePath:(NSString *)path;

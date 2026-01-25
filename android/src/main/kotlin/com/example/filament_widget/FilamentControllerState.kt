@@ -24,6 +24,7 @@ class FilamentControllerState(
     private val mainHandler: Handler,
     private val cacheManager: FilamentCacheManager,
     private val eventEmitter: (String, String) -> Unit,
+    private val debugFeaturesEnabled: Boolean,
 ) {
     @Volatile
     private var viewer: FilamentViewer? = null
@@ -39,7 +40,14 @@ class FilamentControllerState(
         renderThread.post {
             try {
                 val engine = FilamentEngineManager.getEngine()
-                val newViewer = FilamentViewer(entry, surface, context.assets, eventEmitter, engine)
+                val newViewer = FilamentViewer(
+                    entry,
+                    surface,
+                    context.assets,
+                    eventEmitter,
+                    engine,
+                    debugFeaturesEnabled
+                )
                 viewer = newViewer
                 renderThread.addViewer(newViewer)
                 newViewer.resize(width, height)

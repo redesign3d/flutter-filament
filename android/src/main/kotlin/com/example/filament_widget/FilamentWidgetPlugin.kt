@@ -166,6 +166,8 @@ class FilamentWidgetPlugin :
 
     private fun handleCreateController(call: MethodCall, result: Result) {
         val controllerId = call.argument<Number>("controllerId")?.toInt()
+        val debugFeaturesEnabled = call.argument<Boolean>("debugFeaturesEnabled") ?: true
+
         if (controllerId == null) {
             result.error("filament_error", "Missing controllerId.", null)
             return
@@ -186,9 +188,11 @@ class FilamentWidgetPlugin :
             ioExecutor,
             mainHandler,
             cache,
-        ) { type, message ->
-            emitEvent(controllerId, type, message)
-        }
+            { type, message ->
+                emitEvent(controllerId, type, message)
+            },
+            debugFeaturesEnabled
+        )
         controllers[controllerId] = controller
         result.success(null)
     }
