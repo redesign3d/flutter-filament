@@ -792,7 +792,7 @@ class FilamentControllerState(
                 }
                 finishLoadWithDebugData(current, resources, result, startTime)
             } catch (e: Exception) {
-                postError(result, e.message ?: "Failed to load glTF resources.")
+                postError(result, FilamentErrors.IO, e.message ?: "Failed to load glTF resources.")
             }
         }
     }
@@ -821,7 +821,7 @@ class FilamentControllerState(
                 }
                 finishLoadWithDebugData(current, resources, result, startTime)
             } catch (e: Exception) {
-                postError(result, e.message ?: "Failed to load glTF resources.")
+                postError(result, FilamentErrors.IO, e.message ?: "Failed to load glTF resources.")
             }
         }
     }
@@ -856,7 +856,7 @@ class FilamentControllerState(
                 }
                 finishLoadWithDebugData(current, resources, result, startTime)
             } catch (e: Exception) {
-                postError(result, e.message ?: "Failed to load glTF resources.")
+                postError(result, FilamentErrors.IO, e.message ?: "Failed to load glTF resources.")
             }
         }
     }

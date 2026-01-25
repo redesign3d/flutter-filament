@@ -10,7 +10,7 @@ class MethodResultOnce(
     private val delegate: Result,
     private val handler: Handler = Handler(Looper.getMainLooper()),
     private val tag: String = "FilamentWidget",
-    private val debugLogging: Boolean = BuildConfig.DEBUG,
+    private val debugLogging: Boolean = false,
 ) : Result {
     private val completed = AtomicBoolean(false)
 
