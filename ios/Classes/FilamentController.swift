@@ -13,6 +13,7 @@ final class FilamentController {
   private var renderer: FilamentRenderer?
   private var texture: FilamentTexture?
   private var textureId: Int64 = 0
+  private var disposed = false
 
   init(
     controllerId: Int,
@@ -39,11 +40,27 @@ final class FilamentController {
     }
   }
 
-  func createViewer(width: Int, height: Int, result: @escaping FlutterResult) {
+  private func ensureRenderer(_ result: FilamentResultOnce) -> FilamentRenderer? {
+    if disposed {
+      result.error(code: FilamentErrors.disposed, message: "Controller disposed.")
+      return nil
+    }
+    guard let renderer else {
+      result.error(code: FilamentErrors.noViewer, message: "Viewer not initialized.")
+      return nil
+    }
+    return renderer
+  }
+
+  func createViewer(width: Int, height: Int, result: FilamentResultOnce) {
+    if disposed {
+      result.error(code: FilamentErrors.disposed, message: "Controller disposed.")
+      return
+    }
     let clampedWidth = max(1, width)
     let clampedHeight = max(1, height)
     guard let pixelBuffer = makePixelBuffer(width: clampedWidth, height: clampedHeight) else {
-      result(FlutterError(code: "filament_error", message: "Failed to allocate pixel buffer.", details: nil))
+      result.error(code: FilamentErrors.native, message: "Failed to allocate pixel buffer.")
       return
     }
     let texture = FilamentTexture(pixelBuffer: pixelBuffer)
@@ -70,18 +87,19 @@ final class FilamentController {
     renderLoop.perform {
       renderer.setup(with: pixelBuffer, width: Int32(clampedWidth), height: Int32(clampedHeight))
     }
-    result(textureId)
+    result.success(textureId)
   }
 
-  func resize(width: Int, height: Int, result: @escaping FlutterResult) {
-    guard let renderer, let texture else {
-      result(nil)
+  func resize(width: Int, height: Int, result: FilamentResultOnce) {
+    guard let renderer = ensureRenderer(result) else { return }
+    guard let texture else {
+      result.error(code: FilamentErrors.noViewer, message: "Viewer not initialized.")
       return
     }
     let clampedWidth = max(1, width)
     let clampedHeight = max(1, height)
     guard let pixelBuffer = makePixelBuffer(width: clampedWidth, height: clampedHeight) else {
-      result(FlutterError(code: "filament_error", message: "Failed to allocate pixel buffer.", details: nil))
+      result.error(code: FilamentErrors.native, message: "Failed to allocate pixel buffer.")
       return
     }
     texture.updatePixelBuffer(pixelBuffer)
@@ -90,65 +108,64 @@ final class FilamentController {
       // Trigger a frame after resize
     }
     renderLoop.requestFrame()
-    result(nil)
+    result.success(nil)
   }
 
-  func clearScene(result: @escaping FlutterResult) {
-    guard let renderer else {
-      result(nil)
-      return
-    }
+  func clearScene(result: FilamentResultOnce) {
+    guard let renderer = ensureRenderer(result) else { return }
     renderLoop.perform {
       renderer.clearScene()
-      DispatchQueue.main.async { result(nil) }
+      result.success(nil)
     }
     renderLoop.requestFrame()
   }
 
-  func loadModelFromAsset(assetPath: String, result: @escaping FlutterResult) {
-    guard let renderer else {
-      result(FlutterError(code: "filament_error", message: "Viewer not initialized.", details: nil))
-      return
-    }
+  func loadModelFromAsset(assetPath: String, result: FilamentResultOnce) {
+    guard let renderer = ensureRenderer(result) else { return }
     let key = assetLookup(assetPath)
     guard let url = Bundle.main.url(forResource: key, withExtension: nil) else {
-      result(FlutterError(code: "filament_error", message: "Asset not found: \(assetPath)", details: nil))
+      result.error(code: FilamentErrors.io, message: "Asset not found: \(assetPath)")
       return
     }
     DispatchQueue.global(qos: .userInitiated).async { [weak self] in
-      guard let self else { return }
+      guard let self else {
+        result.error(code: FilamentErrors.disposed, message: "Controller disposed.")
+        return
+      }
       do {
         let data = try Data(contentsOf: url)
         self.renderLoop.perform {
+          if self.disposed {
+            result.error(code: FilamentErrors.disposed, message: "Controller disposed.")
+            return
+          }
           renderer.setResourcePath(url.path)
           let uris = renderer.beginModelLoad(data)
-          DispatchQueue.main.async {
-            self.handleResourceUris(
-              uris,
-              baseURL: url.deletingLastPathComponent(),
-              mode: .asset,
-              cacheRoot: nil,
-              result: result
-            )
-          }
+          self.handleResourceUris(
+            uris,
+            baseURL: url.deletingLastPathComponent(),
+            mode: .asset,
+            cacheRoot: nil,
+            result: result
+          )
         }
       } catch {
-        self.emitError("Failed to read asset data: \(error.localizedDescription)", result: result)
+        result.error(code: FilamentErrors.io, message: "Failed to read asset data: \(error.localizedDescription)")
       }
     }
   }
 
-  func loadModelFromUrl(urlString: String, result: @escaping FlutterResult) {
-    guard let renderer else {
-      result(FlutterError(code: "filament_error", message: "Viewer not initialized.", details: nil))
-      return
-    }
+  func loadModelFromUrl(urlString: String, result: FilamentResultOnce) {
+    guard let renderer = ensureRenderer(result) else { return }
     guard let url = URL(string: urlString) else {
-      result(FlutterError(code: "filament_error", message: "Invalid URL.", details: nil))
+      result.error(code: FilamentErrors.invalidArgs, message: "Invalid URL.")
       return
     }
     DispatchQueue.global(qos: .userInitiated).async { [weak self] in
-      guard let self else { return }
+      guard let self else {
+        result.error(code: FilamentErrors.disposed, message: "Controller disposed.")
+        return
+      }
       do {
         let isGltf = url.pathExtension.lowercased() == "gltf"
         let cacheRoot: URL?
@@ -167,225 +184,246 @@ final class FilamentController {
         }
         let data = try Data(contentsOf: cached)
         self.renderLoop.perform {
+          if self.disposed {
+            result.error(code: FilamentErrors.disposed, message: "Controller disposed.")
+            return
+          }
           renderer.setResourcePath(cached.path)
           let uris = renderer.beginModelLoad(data)
-          DispatchQueue.main.async {
-            self.handleResourceUris(
-              uris,
-              baseURL: url.deletingLastPathComponent(),
-              mode: .remote,
-              cacheRoot: cacheRoot,
-              result: result
-            )
-          }
+          self.handleResourceUris(
+            uris,
+            baseURL: url.deletingLastPathComponent(),
+            mode: .remote,
+            cacheRoot: cacheRoot,
+            result: result
+          )
         }
       } catch {
-        self.emitError("Failed to download model: \(error.localizedDescription)", result: result)
+        result.error(code: FilamentErrors.io, message: "Failed to download model: \(error.localizedDescription)")
       }
     }
   }
 
-  func loadModelFromFile(filePath: String, result: @escaping FlutterResult) {
-    guard let renderer else {
-      result(FlutterError(code: "filament_error", message: "Viewer not initialized.", details: nil))
-      return
-    }
+  func loadModelFromFile(filePath: String, result: FilamentResultOnce) {
+    guard let renderer = ensureRenderer(result) else { return }
     let fileURL = URL(fileURLWithPath: filePath)
     guard FileManager.default.fileExists(atPath: fileURL.path) else {
-      result(FlutterError(code: "filament_error", message: "File not found.", details: nil))
+      result.error(code: FilamentErrors.io, message: "File not found.")
       return
     }
     DispatchQueue.global(qos: .userInitiated).async { [weak self] in
-      guard let self else { return }
+      guard let self else {
+        result.error(code: FilamentErrors.disposed, message: "Controller disposed.")
+        return
+      }
       do {
         let data = try Data(contentsOf: fileURL)
         self.renderLoop.perform {
+          if self.disposed {
+            result.error(code: FilamentErrors.disposed, message: "Controller disposed.")
+            return
+          }
           renderer.setResourcePath(fileURL.path)
           let uris = renderer.beginModelLoad(data)
-          DispatchQueue.main.async {
-            self.handleResourceUris(
-              uris,
-              baseURL: fileURL.deletingLastPathComponent(),
-              mode: .localFile,
-              cacheRoot: nil,
-              result: result
-            )
+          self.handleResourceUris(
+            uris,
+            baseURL: fileURL.deletingLastPathComponent(),
+            mode: .localFile,
+            cacheRoot: nil,
+            result: result
+          )
+        }
+      } catch {
+        result.error(code: FilamentErrors.io, message: "Failed to read local file: \(error.localizedDescription)")
+      }
+    }
+  }
+
+  func setIBLFromAsset(ktxPath: String, result: FilamentResultOnce) {
+    guard let renderer = ensureRenderer(result) else { return }
+    let key = assetLookup(ktxPath)
+    guard let url = Bundle.main.url(forResource: key, withExtension: nil) else {
+      result.error(code: FilamentErrors.io, message: "Asset not found: \(ktxPath)")
+      return
+    }
+    DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+      guard let self else {
+        result.error(code: FilamentErrors.disposed, message: "Controller disposed.")
+        return
+      }
+      do {
+        let data = try Data(contentsOf: url)
+        self.renderLoop.perform {
+          if self.disposed {
+            result.error(code: FilamentErrors.disposed, message: "Controller disposed.")
+            return
           }
-        }
-      } catch {
-        self.emitError("Failed to read file: \(error.localizedDescription)", result: result)
-      }
-    }
-  }
-
-  func setIBLFromAsset(ktxPath: String, result: @escaping FlutterResult) {
-    guard let renderer else {
-      result(FlutterError(code: "filament_error", message: "Viewer not initialized.", details: nil))
-      return
-    }
-    let key = assetLookup(ktxPath)
-    guard let url = Bundle.main.url(forResource: key, withExtension: nil) else {
-      result(FlutterError(code: "filament_error", message: "Asset not found: \(ktxPath)", details: nil))
-      return
-    }
-    DispatchQueue.global(qos: .userInitiated).async { [weak self] in
-      guard let self else { return }
-      do {
-        let data = try Data(contentsOf: url)
-        self.renderLoop.perform {
           renderer.setIndirectLightFromKTX(data, key: ktxPath)
-          DispatchQueue.main.async { result(nil) }
+          result.success(nil)
         }
       } catch {
-        self.emitError("Failed to load IBL asset: \(error.localizedDescription)", result: result)
+        self.emitError(FilamentErrors.io, message: "Failed to load IBL asset: \(error.localizedDescription)", result: result)
       }
     }
   }
 
-  func setSkyboxFromAsset(ktxPath: String, result: @escaping FlutterResult) {
-    guard let renderer else {
-      result(FlutterError(code: "filament_error", message: "Viewer not initialized.", details: nil))
-      return
-    }
+  func setSkyboxFromAsset(ktxPath: String, result: FilamentResultOnce) {
+    guard let renderer = ensureRenderer(result) else { return }
     let key = assetLookup(ktxPath)
     guard let url = Bundle.main.url(forResource: key, withExtension: nil) else {
-      result(FlutterError(code: "filament_error", message: "Asset not found: \(ktxPath)", details: nil))
+      result.error(code: FilamentErrors.io, message: "Asset not found: \(ktxPath)")
       return
     }
     DispatchQueue.global(qos: .userInitiated).async { [weak self] in
-      guard let self else { return }
+      guard let self else {
+        result.error(code: FilamentErrors.disposed, message: "Controller disposed.")
+        return
+      }
       do {
         let data = try Data(contentsOf: url)
         self.renderLoop.perform {
+          if self.disposed {
+            result.error(code: FilamentErrors.disposed, message: "Controller disposed.")
+            return
+          }
           renderer.setSkyboxFromKTX(data, key: ktxPath)
-          DispatchQueue.main.async { result(nil) }
+          result.success(nil)
         }
       } catch {
-        self.emitError("Failed to load skybox asset: \(error.localizedDescription)", result: result)
+        self.emitError(FilamentErrors.io, message: "Failed to load skybox asset: \(error.localizedDescription)", result: result)
       }
     }
   }
 
-  func setHdriFromAsset(hdrPath: String, result: @escaping FlutterResult) {
-    guard let renderer else {
-      result(FlutterError(code: "filament_error", message: "Viewer not initialized.", details: nil))
-      return
-    }
+  func setHdriFromAsset(hdrPath: String, result: FilamentResultOnce) {
+    guard let renderer = ensureRenderer(result) else { return }
     let key = assetLookup(hdrPath)
     guard let url = Bundle.main.url(forResource: key, withExtension: nil) else {
-      result(FlutterError(code: "filament_error", message: "Asset not found: \(hdrPath)", details: nil))
+      result.error(code: FilamentErrors.io, message: "Asset not found: \(hdrPath)")
       return
     }
     DispatchQueue.global(qos: .userInitiated).async { [weak self] in
-      guard let self else { return }
+      guard let self else {
+        result.error(code: FilamentErrors.disposed, message: "Controller disposed.")
+        return
+      }
       do {
         let data = try Data(contentsOf: url)
         self.renderLoop.perform {
+          if self.disposed {
+            result.error(code: FilamentErrors.disposed, message: "Controller disposed.")
+            return
+          }
           var message: NSString?
           let success = renderer.setHdriFromHDR(data, key: hdrPath, error: &message)
-          DispatchQueue.main.async {
-            if success {
-              result(nil)
-            } else {
-              let errorMessage = message as String? ?? "Failed to load HDRI asset."
-              self.emitError(errorMessage, result: result)
-            }
+          if success {
+            result.success(nil)
+          } else {
+            let errorMessage = message as String? ?? "Failed to load HDRI asset."
+            self.emitError(FilamentErrors.native, message: errorMessage, result: result)
           }
         }
       } catch {
-        self.emitError("Failed to load HDRI asset: \(error.localizedDescription)", result: result)
+        self.emitError(FilamentErrors.io, message: "Failed to load HDRI asset: \(error.localizedDescription)", result: result)
       }
     }
   }
 
-  func setIBLFromUrl(urlString: String, result: @escaping FlutterResult) {
-    guard let renderer else {
-      result(FlutterError(code: "filament_error", message: "Viewer not initialized.", details: nil))
-      return
-    }
+  func setIBLFromUrl(urlString: String, result: FilamentResultOnce) {
+    guard let renderer = ensureRenderer(result) else { return }
     guard let url = URL(string: urlString) else {
-      result(FlutterError(code: "filament_error", message: "Invalid URL.", details: nil))
+      result.error(code: FilamentErrors.invalidArgs, message: "Invalid URL.")
       return
     }
     DispatchQueue.global(qos: .userInitiated).async { [weak self] in
-      guard let self else { return }
+      guard let self else {
+        result.error(code: FilamentErrors.disposed, message: "Controller disposed.")
+        return
+      }
       do {
         let cached = try self.cacheManager.getOrDownload(url: url)
         let data = try Data(contentsOf: cached)
         self.renderLoop.perform {
+          if self.disposed {
+            result.error(code: FilamentErrors.disposed, message: "Controller disposed.")
+            return
+          }
           renderer.setIndirectLightFromKTX(data, key: urlString)
-          DispatchQueue.main.async { result(nil) }
+          result.success(nil)
         }
       } catch {
-        self.emitError("Failed to load IBL URL: \(error.localizedDescription)", result: result)
+        self.emitError(FilamentErrors.io, message: "Failed to load IBL URL: \(error.localizedDescription)", result: result)
       }
     }
   }
 
-  func setHdriFromUrl(urlString: String, result: @escaping FlutterResult) {
-    guard let renderer else {
-      result(FlutterError(code: "filament_error", message: "Viewer not initialized.", details: nil))
-      return
-    }
+  func setHdriFromUrl(urlString: String, result: FilamentResultOnce) {
+    guard let renderer = ensureRenderer(result) else { return }
     guard let url = URL(string: urlString) else {
-      result(FlutterError(code: "filament_error", message: "Invalid URL.", details: nil))
+      result.error(code: FilamentErrors.invalidArgs, message: "Invalid URL.")
       return
     }
     DispatchQueue.global(qos: .userInitiated).async { [weak self] in
-      guard let self else { return }
+      guard let self else {
+        result.error(code: FilamentErrors.disposed, message: "Controller disposed.")
+        return
+      }
       do {
         let cached = try self.cacheManager.getOrDownload(url: url)
         let data = try Data(contentsOf: cached)
         self.renderLoop.perform {
+          if self.disposed {
+            result.error(code: FilamentErrors.disposed, message: "Controller disposed.")
+            return
+          }
           var message: NSString?
           let success = renderer.setHdriFromHDR(data, key: urlString, error: &message)
-          DispatchQueue.main.async {
-            if success {
-              result(nil)
-            } else {
-              let errorMessage = message as String? ?? "Failed to load HDRI URL."
-              self.emitError(errorMessage, result: result)
-            }
+          if success {
+            result.success(nil)
+          } else {
+            let errorMessage = message as String? ?? "Failed to load HDRI URL."
+            self.emitError(FilamentErrors.native, message: errorMessage, result: result)
           }
         }
       } catch {
-        self.emitError("Failed to load HDRI URL: \(error.localizedDescription)", result: result)
+        self.emitError(FilamentErrors.io, message: "Failed to load HDRI URL: \(error.localizedDescription)", result: result)
       }
     }
   }
 
-  func setSkyboxFromUrl(urlString: String, result: @escaping FlutterResult) {
-    guard let renderer else {
-      result(FlutterError(code: "filament_error", message: "Viewer not initialized.", details: nil))
-      return
-    }
+  func setSkyboxFromUrl(urlString: String, result: FilamentResultOnce) {
+    guard let renderer = ensureRenderer(result) else { return }
     guard let url = URL(string: urlString) else {
-      result(FlutterError(code: "filament_error", message: "Invalid URL.", details: nil))
+      result.error(code: FilamentErrors.invalidArgs, message: "Invalid URL.")
       return
     }
     DispatchQueue.global(qos: .userInitiated).async { [weak self] in
-      guard let self else { return }
+      guard let self else {
+        result.error(code: FilamentErrors.disposed, message: "Controller disposed.")
+        return
+      }
       do {
         let cached = try self.cacheManager.getOrDownload(url: url)
         let data = try Data(contentsOf: cached)
         self.renderLoop.perform {
+          if self.disposed {
+            result.error(code: FilamentErrors.disposed, message: "Controller disposed.")
+            return
+          }
           renderer.setSkyboxFromKTX(data, key: urlString)
-          DispatchQueue.main.async { result(nil) }
+          result.success(nil)
         }
       } catch {
-        self.emitError("Failed to load skybox URL: \(error.localizedDescription)", result: result)
+        self.emitError(FilamentErrors.io, message: "Failed to load skybox URL: \(error.localizedDescription)", result: result)
       }
     }
   }
 
-  func frameModel(useWorldOrigin: Bool, result: @escaping FlutterResult) {
-    guard let renderer else {
-      result(nil)
-      return
-    }
+  func frameModel(useWorldOrigin: Bool, result: FilamentResultOnce) {
+    guard let renderer = ensureRenderer(result) else { return }
     renderLoop.perform {
       renderer.frameModel(useWorldOrigin)
-      DispatchQueue.main.async { result(nil) }
+      result.success(nil)
     }
   }
 
@@ -394,12 +432,9 @@ final class FilamentController {
     maxPitchDeg: Double,
     minYawDeg: Double,
     maxYawDeg: Double,
-    result: @escaping FlutterResult
+    result: FilamentResultOnce
   ) {
-    guard let renderer else {
-      result(nil)
-      return
-    }
+    guard let renderer = ensureRenderer(result) else { return }
     renderLoop.perform {
       renderer.setOrbitConstraintsWithMinPitch(
         minPitchDeg,
@@ -407,51 +442,39 @@ final class FilamentController {
         minYaw: minYawDeg,
         maxYaw: maxYawDeg
       )
-      DispatchQueue.main.async { result(nil) }
+      result.success(nil)
     }
   }
 
-  func setInertiaEnabled(_ enabled: Bool, result: @escaping FlutterResult) {
-    guard let renderer else {
-      result(nil)
-      return
-    }
+  func setInertiaEnabled(_ enabled: Bool, result: FilamentResultOnce) {
+    guard let renderer = ensureRenderer(result) else { return }
     renderLoop.perform {
       renderer.setInertiaEnabled(enabled)
-      DispatchQueue.main.async { result(nil) }
+      result.success(nil)
     }
   }
 
-  func setInertiaParams(damping: Double, sensitivity: Double, result: @escaping FlutterResult) {
-    guard let renderer else {
-      result(nil)
-      return
-    }
+  func setInertiaParams(damping: Double, sensitivity: Double, result: FilamentResultOnce) {
+    guard let renderer = ensureRenderer(result) else { return }
     renderLoop.perform {
       renderer.setInertiaParamsWithDamping(damping, sensitivity: sensitivity)
-      DispatchQueue.main.async { result(nil) }
+      result.success(nil)
     }
   }
 
-  func setZoomLimits(minDistance: Double, maxDistance: Double, result: @escaping FlutterResult) {
-    guard let renderer else {
-      result(nil)
-      return
-    }
+  func setZoomLimits(minDistance: Double, maxDistance: Double, result: FilamentResultOnce) {
+    guard let renderer = ensureRenderer(result) else { return }
     renderLoop.perform {
       renderer.setZoomLimitsWithMinDistance(minDistance, maxDistance: maxDistance)
-      DispatchQueue.main.async { result(nil) }
+      result.success(nil)
     }
   }
 
-  func setCustomCameraEnabled(_ enabled: Bool, result: @escaping FlutterResult) {
-    guard let renderer else {
-      result(nil)
-      return
-    }
+  func setCustomCameraEnabled(_ enabled: Bool, result: FilamentResultOnce) {
+    guard let renderer = ensureRenderer(result) else { return }
     renderLoop.perform {
       renderer.setCustomCameraEnabled(enabled)
-      DispatchQueue.main.async { result(nil) }
+      result.success(nil)
     }
   }
 
@@ -465,12 +488,9 @@ final class FilamentController {
     upX: Double,
     upY: Double,
     upZ: Double,
-    result: @escaping FlutterResult
+    result: FilamentResultOnce
   ) {
-    guard let renderer else {
-      result(nil)
-      return
-    }
+    guard let renderer = ensureRenderer(result) else { return }
     renderLoop.perform {
       renderer.setCustomCameraLookAtWithEyeX(
         eyeX,
@@ -483,40 +503,34 @@ final class FilamentController {
         upY: upY,
         upZ: upZ
       )
-      DispatchQueue.main.async { result(nil) }
+      result.success(nil)
     }
   }
 
-  func setCustomPerspective(fovDegrees: Double, near: Double, far: Double, result: @escaping FlutterResult) {
-    guard let renderer else {
-      result(nil)
-      return
-    }
+  func setCustomPerspective(fovDegrees: Double, near: Double, far: Double, result: FilamentResultOnce) {
+    guard let renderer = ensureRenderer(result) else { return }
     renderLoop.perform {
       renderer.setCustomPerspectiveWithFov(fovDegrees, near: near, far: far)
-      DispatchQueue.main.async { result(nil) }
+      result.success(nil)
     }
   }
 
-  func orbitStart(result: @escaping FlutterResult) {
-    guard let renderer else {
-      result(nil)
-      return
-    }
+  func orbitStart(result: FilamentResultOnce) {
+    guard let renderer = ensureRenderer(result) else { return }
     renderLoop.perform {
       renderer.orbitStart()
-      DispatchQueue.main.async { result(nil) }
+      result.success(nil)
     }
   }
 
-  func orbitDelta(dx: Double, dy: Double, result: @escaping FlutterResult) {
+  func orbitDelta(dx: Double, dy: Double, result: FilamentResultOnce) {
     guard let renderer else {
-      result(nil)
+      result.success(nil)
       return
     }
     renderLoop.perform {
       renderer.orbitDelta(withDx: dx, dy: dy)
-      DispatchQueue.main.async { result(nil) }
+      result.success(nil)
     }
   }
 
@@ -528,14 +542,14 @@ final class FilamentController {
     renderLoop.requestFrame()
   }
 
-  func orbitEnd(velocityX: Double, velocityY: Double, result: @escaping FlutterResult) {
+  func orbitEnd(velocityX: Double, velocityY: Double, result: FilamentResultOnce) {
     guard let renderer else {
-      result(nil)
+      result.success(nil)
       return
     }
     renderLoop.perform {
       renderer.orbitEnd(withVelocityX: velocityX, velocityY: velocityY)
-      DispatchQueue.main.async { result(nil) }
+      result.success(nil)
     }
   }
 
@@ -547,18 +561,18 @@ final class FilamentController {
     renderLoop.requestFrame()
   }
 
-  func zoomStart(result: @escaping FlutterResult) {
-    result(nil)
+  func zoomStart(result: FilamentResultOnce) {
+    result.success(nil)
   }
 
-  func zoomDelta(scaleDelta: Double, result: @escaping FlutterResult) {
+  func zoomDelta(scaleDelta: Double, result: FilamentResultOnce) {
     guard let renderer else {
-      result(nil)
+      result.success(nil)
       return
     }
     renderLoop.perform {
       renderer.zoomDelta(scaleDelta)
-      DispatchQueue.main.async { result(nil) }
+      result.success(nil)
     }
     renderLoop.requestFrame()
   }
@@ -569,194 +583,159 @@ final class FilamentController {
     }
     renderLoop.requestFrame()
   }
-  func zoomEnd(result: @escaping FlutterResult) {
-    result(nil)
+  func zoomEnd(result: FilamentResultOnce) {
+    result.success(nil)
   }
 
-  func getAnimationCount(result: @escaping FlutterResult) {
-    guard let renderer else {
-      result(0)
-      return
-    }
+  func getAnimationCount(result: FilamentResultOnce) {
+    guard let renderer = ensureRenderer(result) else { return }
     renderLoop.perform {
       let count = renderer.getAnimationCount()
-      DispatchQueue.main.async { result(count) }
+      result.success(count)
     }
   }
 
-  func playAnimation(index: Int, loop: Bool, result: @escaping FlutterResult) {
-    guard let renderer else {
-      result(nil)
-      return
-    }
+  func playAnimation(index: Int, loop: Bool, result: FilamentResultOnce) {
+    guard let renderer = ensureRenderer(result) else { return }
     renderLoop.perform {
       renderer.playAnimation(Int32(index), loop: loop)
-      DispatchQueue.main.async { result(nil) }
+      result.success(nil)
     }
   }
 
-  func pauseAnimation(result: @escaping FlutterResult) {
-    guard let renderer else {
-      result(nil)
-      return
-    }
+  func pauseAnimation(result: FilamentResultOnce) {
+    guard let renderer = ensureRenderer(result) else { return }
     renderLoop.perform {
       renderer.pauseAnimation()
-      DispatchQueue.main.async { result(nil) }
+      result.success(nil)
     }
   }
 
-  func seekAnimation(seconds: Double, result: @escaping FlutterResult) {
-    guard let renderer else {
-      result(nil)
-      return
-    }
+  func seekAnimation(seconds: Double, result: FilamentResultOnce) {
+    guard let renderer = ensureRenderer(result) else { return }
     renderLoop.perform {
       renderer.seekAnimation(seconds)
-      DispatchQueue.main.async { result(nil) }
+      result.success(nil)
     }
   }
 
-  func setAnimationSpeed(speed: Double, result: @escaping FlutterResult) {
-    guard let renderer else {
-      result(nil)
-      return
-    }
+  func setAnimationSpeed(speed: Double, result: FilamentResultOnce) {
+    guard let renderer = ensureRenderer(result) else { return }
     renderLoop.perform {
       renderer.setAnimationSpeed(speed)
-      DispatchQueue.main.async { result(nil) }
+      result.success(nil)
     }
   }
 
-  func getAnimationDuration(index: Int, result: @escaping FlutterResult) {
-    guard let renderer else {
-      result(0.0)
-      return
-    }
+  func getAnimationDuration(index: Int, result: FilamentResultOnce) {
+    guard let renderer = ensureRenderer(result) else { return }
     renderLoop.perform {
       let duration = renderer.getAnimationDuration(Int32(index))
-      DispatchQueue.main.async { result(duration) }
+      result.success(duration)
     }
   }
 
-  func setMsaa(samples: Int, result: @escaping FlutterResult) {
-    guard let renderer else {
-      result(nil)
-      return
-    }
+  func setMsaa(samples: Int, result: FilamentResultOnce) {
+    guard let renderer = ensureRenderer(result) else { return }
     renderLoop.perform {
       renderer.setMsaa(Int32(samples))
-      DispatchQueue.main.async { result(nil) }
+      result.success(nil)
     }
   }
 
-  func setDynamicResolutionEnabled(_ enabled: Bool, result: @escaping FlutterResult) {
-    guard let renderer else {
-      result(nil)
-      return
-    }
+  func setDynamicResolutionEnabled(_ enabled: Bool, result: FilamentResultOnce) {
+    guard let renderer = ensureRenderer(result) else { return }
     renderLoop.perform {
       renderer.setDynamicResolutionEnabled(enabled)
-      DispatchQueue.main.async { result(nil) }
+      result.success(nil)
     }
   }
 
-  func setEnvironmentEnabled(_ enabled: Bool, result: @escaping FlutterResult) {
-    guard let renderer else {
-      result(nil)
-      return
-    }
+  func setEnvironmentEnabled(_ enabled: Bool, result: FilamentResultOnce) {
+    guard let renderer = ensureRenderer(result) else { return }
     renderLoop.perform {
       renderer.setEnvironmentEnabled(enabled)
-      DispatchQueue.main.async { result(nil) }
+      result.success(nil)
     }
   }
 
-  func setToneMappingFilmic(result: @escaping FlutterResult) {
-    guard let renderer else {
-      result(nil)
-      return
-    }
+  func setToneMappingFilmic(result: FilamentResultOnce) {
+    guard let renderer = ensureRenderer(result) else { return }
     renderLoop.perform {
       renderer.setToneMappingFilmic()
-      DispatchQueue.main.async { result(nil) }
+      result.success(nil)
     }
   }
 
-  func setShadowsEnabled(_ enabled: Bool, result: @escaping FlutterResult) {
-    guard let renderer else {
-      result(nil)
-      return
-    }
+  func setShadowsEnabled(_ enabled: Bool, result: FilamentResultOnce) {
+    guard let renderer = ensureRenderer(result) else { return }
     renderLoop.perform {
       renderer.setShadowsEnabled(enabled)
-      DispatchQueue.main.async { result(nil) }
+      result.success(nil)
     }
   }
 
-  func setWireframeEnabled(_ enabled: Bool, result: @escaping FlutterResult) {
+  func setWireframeEnabled(_ enabled: Bool, result: FilamentResultOnce) {
     if enabled && !debugFeaturesEnabled {
-        result(nil)
-        return
-    }
-    
-    guard let renderer else {
-      result(nil)
+      result.success(nil)
       return
     }
+
+    guard let renderer = ensureRenderer(result) else { return }
     renderLoop.perform {
       renderer.setWireframeEnabled(enabled)
-      DispatchQueue.main.async { result(nil) }
+      result.success(nil)
     }
   }
 
-  func setBoundingBoxesEnabled(_ enabled: Bool, result: @escaping FlutterResult) {
+  func setBoundingBoxesEnabled(_ enabled: Bool, result: FilamentResultOnce) {
     if enabled && !debugFeaturesEnabled {
-        result(nil)
-        return
-    }
-    guard let renderer else {
-      result(nil)
+      result.success(nil)
       return
     }
+    guard let renderer = ensureRenderer(result) else { return }
     renderLoop.perform {
       renderer.setBoundingBoxesEnabled(enabled)
-      DispatchQueue.main.async { result(nil) }
+      result.success(nil)
     }
   }
 
-  func setDebugLoggingEnabled(_ enabled: Bool, result: @escaping FlutterResult) {
-    guard let renderer else {
-      result(nil)
-      return
-    }
+  func setDebugLoggingEnabled(_ enabled: Bool, result: FilamentResultOnce) {
+    guard let renderer = ensureRenderer(result) else { return }
     renderLoop.perform {
       renderer.setDebugLoggingEnabled(enabled)
-      DispatchQueue.main.async { result(nil) }
+      result.success(nil)
     }
   }
 
-  func getCacheSizeBytes(result: @escaping FlutterResult) {
+  func getCacheSizeBytes(result: FilamentResultOnce) {
     DispatchQueue.global(qos: .utility).async { [cacheManager] in
       let size = cacheManager.getCacheSizeBytes()
-      DispatchQueue.main.async { result(size) }
+      result.success(size)
     }
   }
 
-  func clearCache(result: @escaping FlutterResult) {
+  func clearCache(result: FilamentResultOnce) {
     DispatchQueue.global(qos: .utility).async { [cacheManager] in
       let success = cacheManager.clearCache()
-      DispatchQueue.main.async {
-        if success {
-          result(nil)
-        } else {
-          result(FlutterError(code: "filament_error", message: "Failed to clear cache.", details: nil))
-        }
+      if success {
+        result.success(nil)
+      } else {
+        result.error(code: FilamentErrors.io, message: "Failed to clear cache.")
       }
     }
   }
 
   func dispose(result: @escaping FlutterResult) {
+    dispose(result: FilamentResultOnce(result))
+  }
+
+  func dispose(result: FilamentResultOnce) {
+    if disposed {
+      result.success(nil)
+      return
+    }
+    disposed = true
     if let renderer {
       renderLoop.removeRenderer(renderer)
       renderLoop.perform {
@@ -768,7 +747,7 @@ final class FilamentController {
     }
     texture = nil
     renderer = nil
-    result(nil)
+    result.success(nil)
   }
 
   private enum ResourceMode {
@@ -782,29 +761,40 @@ final class FilamentController {
     baseURL: URL,
     mode: ResourceMode,
     cacheRoot: URL?,
-    result: @escaping FlutterResult
+    result: FilamentResultOnce
   ) {
+    if disposed {
+      result.error(code: FilamentErrors.disposed, message: "Controller disposed.")
+      return
+    }
     guard let renderer else {
-      emitError("Viewer not initialized.", result: result)
+      emitError(FilamentErrors.noViewer, message: "Viewer not initialized.", result: result)
       return
     }
     if uris.isEmpty {
       renderLoop.perform {
+        if self.disposed {
+          result.error(code: FilamentErrors.disposed, message: "Controller disposed.")
+          return
+        }
         let loaded = renderer.finishModelLoad([:])
-        DispatchQueue.main.async {
-          if loaded {
+        if loaded {
+          DispatchQueue.main.async {
             self.eventEmitter("modelLoaded", "Model loaded.")
-            result(nil)
-          } else {
-            self.emitError("Failed to load model resources.", result: result)
+            result.success(nil)
           }
+        } else {
+          self.emitError(FilamentErrors.native, message: "Failed to load model resources.", result: result)
         }
       }
       renderLoop.requestFrame()
       return
     }
     DispatchQueue.global(qos: .userInitiated).async { [weak self] in
-      guard let self else { return }
+      guard let self else {
+        result.error(code: FilamentErrors.disposed, message: "Controller disposed.")
+        return
+      }
       do {
         var resourceData: [String: Data] = [:]
         for uri in uris where !uri.hasPrefix("data:") {
@@ -833,27 +823,31 @@ final class FilamentController {
           }
         }
         self.renderLoop.perform {
+          if self.disposed {
+            result.error(code: FilamentErrors.disposed, message: "Controller disposed.")
+            return
+          }
           let loaded = renderer.finishModelLoad(resourceData)
-          DispatchQueue.main.async {
-            if loaded {
+          if loaded {
+            DispatchQueue.main.async {
               self.eventEmitter("modelLoaded", "Model loaded.")
-              result(nil)
-            } else {
-              self.emitError("Failed to load model resources.", result: result)
+              result.success(nil)
             }
+          } else {
+            self.emitError(FilamentErrors.native, message: "Failed to load model resources.", result: result)
           }
         }
         self.renderLoop.requestFrame()
       } catch {
-        self.emitError("Failed to load resources: \(error.localizedDescription)", result: result)
+        self.emitError(FilamentErrors.io, message: "Failed to load resources: \(error.localizedDescription)", result: result)
       }
     }
   }
 
-  private func emitError(_ message: String, result: @escaping FlutterResult) {
+  private func emitError(_ code: String, message: String, result: FilamentResultOnce) {
     DispatchQueue.main.async {
       self.eventEmitter("error", message)
-      result(FlutterError(code: "filament_error", message: message, details: nil))
+      result.error(code: code, message: message)
     }
   }
 

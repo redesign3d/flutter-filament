@@ -73,52 +73,53 @@ class FilamentWidgetPlugin :
     }
 
     override fun onMethodCall(call: MethodCall, result: Result) {
+        val safeResult = MethodResultOnce(result, mainHandler)
         when (call.method) {
-            "createController" -> handleCreateController(call, result)
-            "disposeController" -> handleDisposeController(call, result)
-            "createViewer" -> handleCreateViewer(call, result)
-            "resize" -> handleResize(call, result)
-            "clearScene" -> handleClearScene(call, result)
-            "loadModelFromAsset" -> handleLoadModelFromAsset(call, result)
-            "loadModelFromUrl" -> handleLoadModelFromUrl(call, result)
-            "loadModelFromFile" -> handleLoadModelFromFile(call, result)
-            "getCacheSizeBytes" -> handleCacheSize(call, result)
-            "clearCache" -> handleClearCache(call, result)
-            "setIBLFromAsset" -> handleSetIBLFromAsset(call, result)
-            "setSkyboxFromAsset" -> handleSetSkyboxFromAsset(call, result)
-            "setHdriFromAsset" -> handleSetHdriFromAsset(call, result)
-            "setIBLFromUrl" -> handleSetIBLFromUrl(call, result)
-            "setSkyboxFromUrl" -> handleSetSkyboxFromUrl(call, result)
-            "setHdriFromUrl" -> handleSetHdriFromUrl(call, result)
-            "frameModel" -> handleFrameModel(call, result)
-            "setOrbitConstraints" -> handleOrbitConstraints(call, result)
-            "setInertiaEnabled" -> handleInertiaEnabled(call, result)
-            "setInertiaParams" -> handleInertiaParams(call, result)
-            "setZoomLimits" -> handleZoomLimits(call, result)
-            "setCustomCameraEnabled" -> handleCustomCameraEnabled(call, result)
-            "setCustomCameraLookAt" -> handleCustomCameraLookAt(call, result)
-            "setCustomPerspective" -> handleCustomPerspective(call, result)
-            "getAnimationCount" -> handleGetAnimationCount(call, result)
-            "playAnimation" -> handlePlayAnimation(call, result)
-            "pauseAnimation" -> handlePauseAnimation(call, result)
-            "seekAnimation" -> handleSeekAnimation(call, result)
-            "setAnimationSpeed" -> handleSetAnimationSpeed(call, result)
-            "getAnimationDuration" -> handleGetAnimationDuration(call, result)
-            "setMsaa" -> handleSetMsaa(call, result)
-            "setDynamicResolutionEnabled" -> handleSetDynamicResolutionEnabled(call, result)
-            "setToneMappingFilmic" -> handleSetToneMappingFilmic(call, result)
-            "setEnvironmentEnabled" -> handleSetEnvironmentEnabled(call, result)
-            "setShadowsEnabled" -> handleSetShadowsEnabled(call, result)
-            "setWireframeEnabled" -> handleSetWireframeEnabled(call, result)
-            "setBoundingBoxesEnabled" -> handleSetBoundingBoxesEnabled(call, result)
-            "setDebugLoggingEnabled" -> handleSetDebugLoggingEnabled(call, result)
-            "orbitStart" -> handleOrbitStart(call, result)
-            "orbitDelta" -> handleOrbitDelta(call, result)
-            "orbitEnd" -> handleOrbitEnd(call, result)
-            "zoomStart" -> handleZoomStart(call, result)
-            "zoomDelta" -> handleZoomDelta(call, result)
-            "zoomEnd" -> handleZoomEnd(call, result)
-            else -> result.notImplemented()
+            "createController" -> handleCreateController(call, safeResult)
+            "disposeController" -> handleDisposeController(call, safeResult)
+            "createViewer" -> handleCreateViewer(call, safeResult)
+            "resize" -> handleResize(call, safeResult)
+            "clearScene" -> handleClearScene(call, safeResult)
+            "loadModelFromAsset" -> handleLoadModelFromAsset(call, safeResult)
+            "loadModelFromUrl" -> handleLoadModelFromUrl(call, safeResult)
+            "loadModelFromFile" -> handleLoadModelFromFile(call, safeResult)
+            "getCacheSizeBytes" -> handleCacheSize(call, safeResult)
+            "clearCache" -> handleClearCache(call, safeResult)
+            "setIBLFromAsset" -> handleSetIBLFromAsset(call, safeResult)
+            "setSkyboxFromAsset" -> handleSetSkyboxFromAsset(call, safeResult)
+            "setHdriFromAsset" -> handleSetHdriFromAsset(call, safeResult)
+            "setIBLFromUrl" -> handleSetIBLFromUrl(call, safeResult)
+            "setSkyboxFromUrl" -> handleSetSkyboxFromUrl(call, safeResult)
+            "setHdriFromUrl" -> handleSetHdriFromUrl(call, safeResult)
+            "frameModel" -> handleFrameModel(call, safeResult)
+            "setOrbitConstraints" -> handleOrbitConstraints(call, safeResult)
+            "setInertiaEnabled" -> handleInertiaEnabled(call, safeResult)
+            "setInertiaParams" -> handleInertiaParams(call, safeResult)
+            "setZoomLimits" -> handleZoomLimits(call, safeResult)
+            "setCustomCameraEnabled" -> handleCustomCameraEnabled(call, safeResult)
+            "setCustomCameraLookAt" -> handleCustomCameraLookAt(call, safeResult)
+            "setCustomPerspective" -> handleCustomPerspective(call, safeResult)
+            "getAnimationCount" -> handleGetAnimationCount(call, safeResult)
+            "playAnimation" -> handlePlayAnimation(call, safeResult)
+            "pauseAnimation" -> handlePauseAnimation(call, safeResult)
+            "seekAnimation" -> handleSeekAnimation(call, safeResult)
+            "setAnimationSpeed" -> handleSetAnimationSpeed(call, safeResult)
+            "getAnimationDuration" -> handleGetAnimationDuration(call, safeResult)
+            "setMsaa" -> handleSetMsaa(call, safeResult)
+            "setDynamicResolutionEnabled" -> handleSetDynamicResolutionEnabled(call, safeResult)
+            "setToneMappingFilmic" -> handleSetToneMappingFilmic(call, safeResult)
+            "setEnvironmentEnabled" -> handleSetEnvironmentEnabled(call, safeResult)
+            "setShadowsEnabled" -> handleSetShadowsEnabled(call, safeResult)
+            "setWireframeEnabled" -> handleSetWireframeEnabled(call, safeResult)
+            "setBoundingBoxesEnabled" -> handleSetBoundingBoxesEnabled(call, safeResult)
+            "setDebugLoggingEnabled" -> handleSetDebugLoggingEnabled(call, safeResult)
+            "orbitStart" -> handleOrbitStart(call, safeResult)
+            "orbitDelta" -> handleOrbitDelta(call, safeResult)
+            "orbitEnd" -> handleOrbitEnd(call, safeResult)
+            "zoomStart" -> handleZoomStart(call, safeResult)
+            "zoomDelta" -> handleZoomDelta(call, safeResult)
+            "zoomEnd" -> handleZoomEnd(call, safeResult)
+            else -> safeResult.notImplemented()
         }
     }
 
@@ -209,12 +210,12 @@ class FilamentWidgetPlugin :
         val debugFeaturesEnabled = call.argument<Boolean>("debugFeaturesEnabled") ?: true
 
         if (controllerId == null) {
-            result.error("filament_error", "Missing controllerId.", null)
+            result.error(FilamentErrors.INVALID_ARGS, "Missing controllerId.", null)
             return
         }
         val rThread = renderThread
         if (rThread == null) {
-            result.error("filament_error", "Render thread not initialized.", null)
+            result.error(FilamentErrors.NATIVE, "Render thread not initialized.", null)
             return
         }
         val cache = cacheManager ?: FilamentCacheManager(context.cacheDir)
@@ -240,12 +241,12 @@ class FilamentWidgetPlugin :
     private fun handleDisposeController(call: MethodCall, result: Result) {
         val controllerId = call.argument<Number>("controllerId")?.toInt()
         if (controllerId == null) {
-            result.error("filament_error", "Missing controllerId.", null)
+            result.error(FilamentErrors.INVALID_ARGS, "Missing controllerId.", null)
             return
         }
         val controller = controllers.remove(controllerId)
         if (controller == null) {
-            result.success(null)
+            result.error(FilamentErrors.DISPOSED, "Controller already disposed.", null)
             return
         }
         controller.dispose(result)
@@ -274,7 +275,7 @@ class FilamentWidgetPlugin :
         val controller = resolveController(call, result) ?: return
         val assetPath = call.argument<String>("assetPath")
         if (assetPath.isNullOrBlank()) {
-            result.error("filament_error", "Missing assetPath.", null)
+            result.error(FilamentErrors.INVALID_ARGS, "Missing assetPath.", null)
             return
         }
         controller.loadModelFromAsset(assetPath, result)
@@ -284,7 +285,7 @@ class FilamentWidgetPlugin :
         val controller = resolveController(call, result) ?: return
         val url = call.argument<String>("url")
         if (url.isNullOrBlank()) {
-            result.error("filament_error", "Missing url.", null)
+            result.error(FilamentErrors.INVALID_ARGS, "Missing url.", null)
             return
         }
         controller.loadModelFromUrl(url, result)
@@ -294,7 +295,7 @@ class FilamentWidgetPlugin :
         val controller = resolveController(call, result) ?: return
         val filePath = call.argument<String>("filePath")
         if (filePath.isNullOrBlank()) {
-            result.error("filament_error", "Missing filePath.", null)
+            result.error(FilamentErrors.INVALID_ARGS, "Missing filePath.", null)
             return
         }
         controller.loadModelFromFile(filePath, result)
@@ -314,7 +315,7 @@ class FilamentWidgetPlugin :
         val controller = resolveController(call, result) ?: return
         val assetPath = call.argument<String>("ktxPath")
         if (assetPath.isNullOrBlank()) {
-            result.error("filament_error", "Missing ktxPath.", null)
+            result.error(FilamentErrors.INVALID_ARGS, "Missing ktxPath.", null)
             return
         }
         controller.setIBLFromAsset(assetPath, result)
@@ -324,7 +325,7 @@ class FilamentWidgetPlugin :
         val controller = resolveController(call, result) ?: return
         val assetPath = call.argument<String>("ktxPath")
         if (assetPath.isNullOrBlank()) {
-            result.error("filament_error", "Missing ktxPath.", null)
+            result.error(FilamentErrors.INVALID_ARGS, "Missing ktxPath.", null)
             return
         }
         controller.setSkyboxFromAsset(assetPath, result)
@@ -334,7 +335,7 @@ class FilamentWidgetPlugin :
         val controller = resolveController(call, result) ?: return
         val assetPath = call.argument<String>("hdrPath")
         if (assetPath.isNullOrBlank()) {
-            result.error("filament_error", "Missing hdrPath.", null)
+            result.error(FilamentErrors.INVALID_ARGS, "Missing hdrPath.", null)
             return
         }
         controller.setHdriFromAsset(assetPath, result)
@@ -344,7 +345,7 @@ class FilamentWidgetPlugin :
         val controller = resolveController(call, result) ?: return
         val url = call.argument<String>("url")
         if (url.isNullOrBlank()) {
-            result.error("filament_error", "Missing url.", null)
+            result.error(FilamentErrors.INVALID_ARGS, "Missing url.", null)
             return
         }
         controller.setIBLFromUrl(url, result)
@@ -354,7 +355,7 @@ class FilamentWidgetPlugin :
         val controller = resolveController(call, result) ?: return
         val url = call.argument<String>("url")
         if (url.isNullOrBlank()) {
-            result.error("filament_error", "Missing url.", null)
+            result.error(FilamentErrors.INVALID_ARGS, "Missing url.", null)
             return
         }
         controller.setSkyboxFromUrl(url, result)
@@ -364,7 +365,7 @@ class FilamentWidgetPlugin :
         val controller = resolveController(call, result) ?: return
         val url = call.argument<String>("url")
         if (url.isNullOrBlank()) {
-            result.error("filament_error", "Missing url.", null)
+            result.error(FilamentErrors.INVALID_ARGS, "Missing url.", null)
             return
         }
         controller.setHdriFromUrl(url, result)
@@ -564,12 +565,12 @@ class FilamentWidgetPlugin :
     private fun resolveController(call: MethodCall, result: Result): FilamentControllerState? {
         val controllerId = call.argument<Number>("controllerId")?.toInt()
         if (controllerId == null) {
-            result.error("filament_error", "Missing controllerId.", null)
+            result.error(FilamentErrors.INVALID_ARGS, "Missing controllerId.", null)
             return null
         }
         val controller = controllers[controllerId]
         if (controller == null) {
-            result.error("filament_error", "Unknown controllerId.", null)
+            result.error(FilamentErrors.DISPOSED, "Controller disposed.", null)
         }
         return controller
     }

@@ -29,7 +29,14 @@ class FilamentControllerState(
     @Volatile
     private var viewer: FilamentViewer? = null
 
+    @Volatile
+    private var disposed = false
+
     fun createViewer(width: Int, height: Int, result: Result) {
+        if (disposed) {
+            postError(result, FilamentErrors.DISPOSED, "Controller disposed.")
+            return
+        }
         if (viewer != null) {
             disposeViewer()
         }
@@ -48,17 +55,18 @@ class FilamentControllerState(
                     engine,
                     debugFeaturesEnabled
                 )
+                if (disposed) {
+                    newViewer.destroy()
+                    postError(result, FilamentErrors.DISPOSED, "Controller disposed.")
+                    return@post
+                }
                 viewer = newViewer
                 renderThread.addViewer(newViewer)
                 newViewer.resize(width, height)
 
-                mainHandler.post {
-                    result.success(newViewer.textureId())
-                }
+                result.success(newViewer.textureId())
             } catch (e: Exception) {
-                mainHandler.post {
-                    result.error("filament_error", "Failed to create viewer: ${e.message}", null)
-                }
+                postError(result, FilamentErrors.NATIVE, "Failed to create viewer: ${e.message}")
             }
         }
     }
@@ -66,7 +74,7 @@ class FilamentControllerState(
     fun resize(width: Int, height: Int, result: Result) {
         val current = viewer
         if (current == null) {
-            result.success(null)
+            postError(result, FilamentErrors.NO_VIEWER, "Viewer not initialized.")
             return
         }
         current.setBufferSize(width, height)
@@ -80,7 +88,7 @@ class FilamentControllerState(
     fun clearScene(result: Result) {
         val current = viewer
         if (current == null) {
-            result.success(null)
+            postError(result, FilamentErrors.NO_VIEWER, "Viewer not initialized.")
             return
         }
         renderThread.post {
@@ -101,14 +109,18 @@ class FilamentControllerState(
                 val buffer = readAssetBuffer(resolvedPath)
 
                 renderThread.post {
+                    if (disposed) {
+                        postError(result, FilamentErrors.DISPOSED, "Controller disposed.")
+                        return@post
+                    }
                     val current = viewer
                     if (current == null) {
-                        // Viewer disposed while loading
+                        postError(result, FilamentErrors.NO_VIEWER, "Viewer not initialized.")
                         return@post
                     }
                     val resourceUris = current.beginModelLoad(buffer)
                     if (resourceUris == null) {
-                        postError(result, "Failed to parse glTF asset.")
+                        postError(result, FilamentErrors.PARSE, "Failed to parse glTF asset.")
                         return@post
                     }
                     if (resourceUris.isEmpty()) {
@@ -122,7 +134,7 @@ class FilamentControllerState(
                     }
                 }
             } catch (e: Exception) {
-                postError(result, e.message ?: "Failed to load asset.")
+                postError(result, FilamentErrors.IO, e.message ?: "Failed to load asset.")
             }
         }
     }
@@ -134,13 +146,18 @@ class FilamentControllerState(
                 val buffer = mapFileBuffer(file) ?: readFileBuffer(file)
                 val baseUrl = url.substringBeforeLast("/")
                 renderThread.post {
+                    if (disposed) {
+                        postError(result, FilamentErrors.DISPOSED, "Controller disposed.")
+                        return@post
+                    }
                     val current = viewer
                     if (current == null) {
+                        postError(result, FilamentErrors.NO_VIEWER, "Viewer not initialized.")
                         return@post
                     }
                     val resourceUris = current.beginModelLoad(buffer)
                     if (resourceUris == null) {
-                        postError(result, "Failed to parse glTF asset.")
+                        postError(result, FilamentErrors.PARSE, "Failed to parse glTF asset.")
                         return@post
                     }
                     if (resourceUris.isEmpty()) {
@@ -151,7 +168,7 @@ class FilamentControllerState(
                     }
                 }
             } catch (e: Exception) {
-                postError(result, e.message ?: "Failed to load URL.")
+                postError(result, FilamentErrors.IO, e.message ?: "Failed to load URL.")
             }
         }
     }
@@ -161,19 +178,24 @@ class FilamentControllerState(
             try {
                 val file = File(filePath)
                 if (!file.exists()) {
-                    postError(result, "File not found.")
+                    postError(result, FilamentErrors.IO, "File not found.")
                     return@execute
                 }
                 val buffer = mapFileBuffer(file) ?: readFileBuffer(file)
                 val baseDir = file.parentFile
                 renderThread.post {
+                    if (disposed) {
+                        postError(result, FilamentErrors.DISPOSED, "Controller disposed.")
+                        return@post
+                    }
                     val current = viewer
                     if (current == null) {
+                        postError(result, FilamentErrors.NO_VIEWER, "Viewer not initialized.")
                         return@post
                     }
                     val resourceUris = current.beginModelLoad(buffer)
                     if (resourceUris == null) {
-                        postError(result, "Failed to parse glTF asset.")
+                        postError(result, FilamentErrors.PARSE, "Failed to parse glTF asset.")
                         return@post
                     }
                     if (resourceUris.isEmpty() || baseDir == null) {
@@ -184,7 +206,7 @@ class FilamentControllerState(
                     }
                 }
             } catch (e: Exception) {
-                postError(result, e.message ?: "Failed to load file.")
+                postError(result, FilamentErrors.IO, e.message ?: "Failed to load file.")
             }
         }
     }
@@ -195,11 +217,20 @@ class FilamentControllerState(
             try {
                 val buffer = readAssetBuffer(resolvedPath)
                 renderThread.post {
-                    viewer?.setIndirectLightFromKtx(buffer, assetPath)
+                    val current = viewer
+                    if (current == null) {
+                        postError(result, FilamentErrors.NO_VIEWER, "Viewer not initialized.")
+                        return@post
+                    }
+                    if (disposed) {
+                        postError(result, FilamentErrors.DISPOSED, "Controller disposed.")
+                        return@post
+                    }
+                    current.setIndirectLightFromKtx(buffer, assetPath)
                     postSuccess(result)
                 }
             } catch (e: Exception) {
-                postError(result, e.message ?: "Failed to load IBL asset.")
+                postError(result, FilamentErrors.IO, e.message ?: "Failed to load IBL asset.")
             }
         }
     }
@@ -210,11 +241,20 @@ class FilamentControllerState(
             try {
                 val buffer = readAssetBuffer(resolvedPath)
                 renderThread.post {
-                    viewer?.setSkyboxFromKtx(buffer, assetPath)
+                    val current = viewer
+                    if (current == null) {
+                        postError(result, FilamentErrors.NO_VIEWER, "Viewer not initialized.")
+                        return@post
+                    }
+                    if (disposed) {
+                        postError(result, FilamentErrors.DISPOSED, "Controller disposed.")
+                        return@post
+                    }
+                    current.setSkyboxFromKtx(buffer, assetPath)
                     postSuccess(result)
                 }
             } catch (e: Exception) {
-                postError(result, e.message ?: "Failed to load skybox asset.")
+                postError(result, FilamentErrors.IO, e.message ?: "Failed to load skybox asset.")
             }
         }
     }
@@ -226,14 +266,23 @@ class FilamentControllerState(
                 val buffer = readAssetBuffer(resolvedPath)
                 renderThread.post {
                     try {
-                        viewer?.setHdriFromHdr(buffer, assetPath)
+                        val current = viewer
+                        if (current == null) {
+                            postError(result, FilamentErrors.NO_VIEWER, "Viewer not initialized.")
+                            return@post
+                        }
+                        if (disposed) {
+                            postError(result, FilamentErrors.DISPOSED, "Controller disposed.")
+                            return@post
+                        }
+                        current.setHdriFromHdr(buffer, assetPath)
                         postSuccess(result)
                     } catch (e: Exception) {
-                        postError(result, e.message ?: "Failed to load HDRI asset.")
+                        postError(result, FilamentErrors.NATIVE, e.message ?: "Failed to load HDRI asset.")
                     }
                 }
             } catch (e: Exception) {
-                postError(result, e.message ?: "Failed to load HDRI asset.")
+                postError(result, FilamentErrors.IO, e.message ?: "Failed to load HDRI asset.")
             }
         }
     }
@@ -244,11 +293,20 @@ class FilamentControllerState(
                 val file = cacheManager.getOrDownload(url)
                 val buffer = mapFileBuffer(file) ?: readFileBuffer(file)
                 renderThread.post {
-                    viewer?.setIndirectLightFromKtx(buffer, url)
+                    val current = viewer
+                    if (current == null) {
+                        postError(result, FilamentErrors.NO_VIEWER, "Viewer not initialized.")
+                        return@post
+                    }
+                    if (disposed) {
+                        postError(result, FilamentErrors.DISPOSED, "Controller disposed.")
+                        return@post
+                    }
+                    current.setIndirectLightFromKtx(buffer, url)
                     postSuccess(result)
                 }
             } catch (e: Exception) {
-                postError(result, e.message ?: "Failed to load IBL URL.")
+                postError(result, FilamentErrors.IO, e.message ?: "Failed to load IBL URL.")
             }
         }
     }
@@ -259,11 +317,20 @@ class FilamentControllerState(
                 val file = cacheManager.getOrDownload(url)
                 val buffer = mapFileBuffer(file) ?: readFileBuffer(file)
                 renderThread.post {
-                    viewer?.setSkyboxFromKtx(buffer, url)
+                    val current = viewer
+                    if (current == null) {
+                        postError(result, FilamentErrors.NO_VIEWER, "Viewer not initialized.")
+                        return@post
+                    }
+                    if (disposed) {
+                        postError(result, FilamentErrors.DISPOSED, "Controller disposed.")
+                        return@post
+                    }
+                    current.setSkyboxFromKtx(buffer, url)
                     postSuccess(result)
                 }
             } catch (e: Exception) {
-                postError(result, e.message ?: "Failed to load skybox URL.")
+                postError(result, FilamentErrors.IO, e.message ?: "Failed to load skybox URL.")
             }
         }
     }
@@ -275,14 +342,23 @@ class FilamentControllerState(
                 val buffer = mapFileBuffer(file) ?: readFileBuffer(file)
                 renderThread.post {
                     try {
-                        viewer?.setHdriFromHdr(buffer, url)
+                        val current = viewer
+                        if (current == null) {
+                            postError(result, FilamentErrors.NO_VIEWER, "Viewer not initialized.")
+                            return@post
+                        }
+                        if (disposed) {
+                            postError(result, FilamentErrors.DISPOSED, "Controller disposed.")
+                            return@post
+                        }
+                        current.setHdriFromHdr(buffer, url)
                         postSuccess(result)
                     } catch (e: Exception) {
-                        postError(result, e.message ?: "Failed to load HDRI URL.")
+                        postError(result, FilamentErrors.NATIVE, e.message ?: "Failed to load HDRI URL.")
                     }
                 }
             } catch (e: Exception) {
-                postError(result, e.message ?: "Failed to load HDRI URL.")
+                postError(result, FilamentErrors.IO, e.message ?: "Failed to load HDRI URL.")
             }
         }
     }
@@ -290,7 +366,7 @@ class FilamentControllerState(
     fun frameModel(useWorldOrigin: Boolean, result: Result) {
         val current = viewer
         if (current == null) {
-            result.success(null)
+            postError(result, FilamentErrors.NO_VIEWER, "Viewer not initialized.")
             return
         }
         renderThread.post {
@@ -308,7 +384,7 @@ class FilamentControllerState(
     ) {
         val current = viewer
         if (current == null) {
-            result.success(null)
+            postError(result, FilamentErrors.NO_VIEWER, "Viewer not initialized.")
             return
         }
         renderThread.post {
@@ -320,7 +396,7 @@ class FilamentControllerState(
     fun setInertiaEnabled(enabled: Boolean, result: Result) {
         val current = viewer
         if (current == null) {
-            result.success(null)
+            postError(result, FilamentErrors.NO_VIEWER, "Viewer not initialized.")
             return
         }
         renderThread.post {
@@ -332,7 +408,7 @@ class FilamentControllerState(
     fun setInertiaParams(damping: Double, sensitivity: Double, result: Result) {
         val current = viewer
         if (current == null) {
-            result.success(null)
+            postError(result, FilamentErrors.NO_VIEWER, "Viewer not initialized.")
             return
         }
         renderThread.post {
@@ -344,7 +420,7 @@ class FilamentControllerState(
     fun setZoomLimits(minDistance: Double, maxDistance: Double, result: Result) {
         val current = viewer
         if (current == null) {
-            result.success(null)
+            postError(result, FilamentErrors.NO_VIEWER, "Viewer not initialized.")
             return
         }
         renderThread.post {
@@ -356,7 +432,7 @@ class FilamentControllerState(
     fun setCustomCameraEnabled(enabled: Boolean, result: Result) {
         val current = viewer
         if (current == null) {
-            result.success(null)
+            postError(result, FilamentErrors.NO_VIEWER, "Viewer not initialized.")
             return
         }
         renderThread.post {
@@ -379,7 +455,7 @@ class FilamentControllerState(
     ) {
         val current = viewer
         if (current == null) {
-            result.success(null)
+            postError(result, FilamentErrors.NO_VIEWER, "Viewer not initialized.")
             return
         }
         renderThread.post {
@@ -403,7 +479,7 @@ class FilamentControllerState(
     fun getAnimationCount(result: Result) {
         val current = viewer
         if (current == null) {
-            result.success(0)
+            postError(result, FilamentErrors.NO_VIEWER, "Viewer not initialized.")
             return
         }
         renderThread.post {
@@ -415,7 +491,7 @@ class FilamentControllerState(
     fun playAnimation(index: Int, loop: Boolean, result: Result) {
         val current = viewer
         if (current == null) {
-            result.success(null)
+            postError(result, FilamentErrors.NO_VIEWER, "Viewer not initialized.")
             return
         }
         renderThread.post {
@@ -427,7 +503,7 @@ class FilamentControllerState(
     fun pauseAnimation(result: Result) {
         val current = viewer
         if (current == null) {
-            result.success(null)
+            postError(result, FilamentErrors.NO_VIEWER, "Viewer not initialized.")
             return
         }
         renderThread.post {
@@ -439,7 +515,7 @@ class FilamentControllerState(
     fun seekAnimation(seconds: Double, result: Result) {
         val current = viewer
         if (current == null) {
-            result.success(null)
+            postError(result, FilamentErrors.NO_VIEWER, "Viewer not initialized.")
             return
         }
         renderThread.post {
@@ -451,7 +527,7 @@ class FilamentControllerState(
     fun setAnimationSpeed(speed: Double, result: Result) {
         val current = viewer
         if (current == null) {
-            result.success(null)
+            postError(result, FilamentErrors.NO_VIEWER, "Viewer not initialized.")
             return
         }
         renderThread.post {
@@ -463,7 +539,7 @@ class FilamentControllerState(
     fun getAnimationDuration(index: Int, result: Result) {
         val current = viewer
         if (current == null) {
-            result.success(0.0)
+            postError(result, FilamentErrors.NO_VIEWER, "Viewer not initialized.")
             return
         }
         renderThread.post {
@@ -475,7 +551,7 @@ class FilamentControllerState(
     fun setMsaa(samples: Int, result: Result) {
         val current = viewer
         if (current == null) {
-            result.success(null)
+            postError(result, FilamentErrors.NO_VIEWER, "Viewer not initialized.")
             return
         }
         renderThread.post {
@@ -487,7 +563,7 @@ class FilamentControllerState(
     fun setDynamicResolutionEnabled(enabled: Boolean, result: Result) {
         val current = viewer
         if (current == null) {
-            result.success(null)
+            postError(result, FilamentErrors.NO_VIEWER, "Viewer not initialized.")
             return
         }
         renderThread.post {
@@ -499,7 +575,7 @@ class FilamentControllerState(
     fun setToneMappingFilmic(result: Result) {
         val current = viewer
         if (current == null) {
-            result.success(null)
+            postError(result, FilamentErrors.NO_VIEWER, "Viewer not initialized.")
             return
         }
         renderThread.post {
@@ -511,7 +587,7 @@ class FilamentControllerState(
     fun setEnvironmentEnabled(enabled: Boolean, result: Result) {
         val current = viewer
         if (current == null) {
-            result.success(null)
+            postError(result, FilamentErrors.NO_VIEWER, "Viewer not initialized.")
             return
         }
         renderThread.post {
@@ -523,7 +599,7 @@ class FilamentControllerState(
     fun setShadowsEnabled(enabled: Boolean, result: Result) {
         val current = viewer
         if (current == null) {
-            result.success(null)
+            postError(result, FilamentErrors.NO_VIEWER, "Viewer not initialized.")
             return
         }
         renderThread.post {
@@ -535,7 +611,7 @@ class FilamentControllerState(
     fun setWireframeEnabled(enabled: Boolean, result: Result) {
         val current = viewer
         if (current == null) {
-            result.success(null)
+            postError(result, FilamentErrors.NO_VIEWER, "Viewer not initialized.")
             return
         }
         renderThread.post {
@@ -547,7 +623,7 @@ class FilamentControllerState(
     fun setBoundingBoxesEnabled(enabled: Boolean, result: Result) {
         val current = viewer
         if (current == null) {
-            result.success(null)
+            postError(result, FilamentErrors.NO_VIEWER, "Viewer not initialized.")
             return
         }
         renderThread.post {
@@ -559,7 +635,7 @@ class FilamentControllerState(
     fun setDebugLoggingEnabled(enabled: Boolean, result: Result) {
         val current = viewer
         if (current == null) {
-            result.success(null)
+            postError(result, FilamentErrors.NO_VIEWER, "Viewer not initialized.")
             return
         }
         renderThread.post {
@@ -571,7 +647,7 @@ class FilamentControllerState(
     fun orbitStart(result: Result) {
         val current = viewer
         if (current == null) {
-            result.success(null)
+            postError(result, FilamentErrors.NO_VIEWER, "Viewer not initialized.")
             return
         }
         renderThread.post {
@@ -669,7 +745,7 @@ class FilamentControllerState(
     fun getCacheSizeBytes(result: Result) {
         ioExecutor.execute {
             val size = cacheManager.getCacheSizeBytes()
-            mainHandler.post { result.success(size) }
+            result.success(size)
         }
     }
 
@@ -679,12 +755,13 @@ class FilamentControllerState(
             if (success) {
                 postSuccess(result)
             } else {
-                postError(result, "Failed to clear cache.")
+                postError(result, FilamentErrors.IO, "Failed to clear cache.")
             }
         }
     }
 
     fun dispose(result: Result) {
+        disposed = true
         disposeViewer()
         postSuccess(result)
     }
@@ -791,6 +868,14 @@ class FilamentControllerState(
         startTime: Long
     ) {
         renderThread.post {
+            if (disposed) {
+                postError(result, FilamentErrors.DISPOSED, "Controller disposed.")
+                return@post
+            }
+            if (viewer != current) {
+                postError(result, FilamentErrors.NO_VIEWER, "Viewer not initialized.")
+                return@post
+            }
             current.finishModelLoad(resources)
             ioExecutor.execute {
                 current.updateDebugDataInBackground()
@@ -836,11 +921,11 @@ class FilamentControllerState(
     }
 
     private fun postSuccess(result: Result) {
-        mainHandler.post { result.success(null) }
+        result.success(null)
     }
 
-    private fun postError(result: Result, message: String) {
+    private fun postError(result: Result, code: String, message: String) {
         eventEmitter("error", message)
-        mainHandler.post { result.error("filament_error", message, null) }
+        result.error(code, message, null)
     }
 }
