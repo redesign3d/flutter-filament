@@ -68,7 +68,7 @@ void main() {
 
     expect(c1Events.any((e) => e.message == 'hello c1'), isTrue);
     expect(c2Events.any((e) => e.message == 'hello c2'), isTrue);
-    
+
     // Ensure cross-talk didn't happen
     expect(c1Events.any((e) => e.message == 'hello c2'), isFalse);
     expect(c2Events.any((e) => e.message == 'hello c1'), isFalse);
@@ -84,7 +84,8 @@ class MyMockStreamHandler extends test_mocks.MockStreamHandler {
   static test_mocks.MockStreamHandlerEventSink? sink;
 
   @override
-  void onListen(Object? arguments, test_mocks.MockStreamHandlerEventSink events) {
+  void onListen(
+      Object? arguments, test_mocks.MockStreamHandlerEventSink events) {
     sink = events;
   }
 

@@ -22,8 +22,8 @@ void main() {
       return null;
     });
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
-        .setMockDecodedMessageHandler<ByteData>(
-            controlChannel, (ByteData? message) async {
+        .setMockDecodedMessageHandler<ByteData>(controlChannel,
+            (ByteData? message) async {
       if (message != null) {
         controlMessages.add(message);
       }
@@ -35,7 +35,7 @@ void main() {
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
         .setMockMethodCallHandler(channel, null);
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
-      .setMockDecodedMessageHandler<ByteData>(controlChannel, null);
+        .setMockDecodedMessageHandler<ByteData>(controlChannel, null);
   });
 
   Map<String, dynamic> decodeControl(ByteData data) {
@@ -49,7 +49,8 @@ void main() {
     };
   }
 
-  testWidgets('Orbit deltas are aggregated per frame', (WidgetTester tester) async {
+  testWidgets('Orbit deltas are aggregated per frame',
+      (WidgetTester tester) async {
     final controller = FilamentController();
     await controller.initialize();
     log.clear(); // remove createController call
@@ -69,22 +70,23 @@ void main() {
 
     // Should have sent one aggregated event
     final orbitMessages = controlMessages
-      .map(decodeControl)
-      .where((m) => m['opcode'] == 1)
-      .toList();
+        .map(decodeControl)
+        .where((m) => m['opcode'] == 1)
+        .toList();
     expect(orbitMessages.length, 1);
     expect(orbitMessages.first['a'], 11.0); // 10 + 2 - 1
     expect(orbitMessages.first['b'], 10.0); // 5 + 2 + 3
   });
 
-  testWidgets('Zoom deltas are aggregated per frame (multiplicative)', (WidgetTester tester) async {
+  testWidgets('Zoom deltas are aggregated per frame (multiplicative)',
+      (WidgetTester tester) async {
     final controller = FilamentController();
     await controller.initialize();
     log.clear();
 
     await controller.handleZoomDelta(1.1);
     await controller.handleZoomDelta(1.1);
-    
+
     expect(log.where((c) => c.method == 'zoomDelta'), isEmpty);
 
     tester.binding.scheduleFrame();
@@ -92,42 +94,44 @@ void main() {
     await tester.pump(const Duration(milliseconds: 1));
 
     final zoomMessages = controlMessages
-      .map(decodeControl)
-      .where((m) => m['opcode'] == 2)
-      .toList();
+        .map(decodeControl)
+        .where((m) => m['opcode'] == 2)
+        .toList();
     expect(zoomMessages.length, 1);
     // 1.1 * 1.1 = 1.21
     expect(zoomMessages.first['c'], closeTo(1.21, 0.0001));
   });
 
-  testWidgets('OrbitEnd forces flush of pending deltas', (WidgetTester tester) async {
+  testWidgets('OrbitEnd forces flush of pending deltas',
+      (WidgetTester tester) async {
     final controller = FilamentController();
     await controller.initialize();
     log.clear();
 
     await controller.handleOrbitDelta(5.0, 0.0);
-    
+
     // Call End immediately
     await controller.handleOrbitEnd(velocityX: 0, velocityY: 0);
 
     // Expect orbitDelta THEN orbitEnd
     final orbitMessages = controlMessages
-      .map(decodeControl)
-      .where((m) => m['opcode'] == 1)
-      .toList();
+        .map(decodeControl)
+        .where((m) => m['opcode'] == 1)
+        .toList();
     expect(orbitMessages.length, 1);
     expect(orbitMessages.first['a'], 5.0);
     final endCalls = log.where((c) => c.method == 'orbitEnd').toList();
     expect(endCalls.length, 1);
   });
 
-  testWidgets('ZoomEnd forces flush of pending deltas', (WidgetTester tester) async {
+  testWidgets('ZoomEnd forces flush of pending deltas',
+      (WidgetTester tester) async {
     final controller = FilamentController();
     await controller.initialize();
     log.clear();
 
     await controller.handleZoomDelta(2.0);
-    
+
     // Call End immediately
     await controller.handleZoomEnd();
     await tester.pump();

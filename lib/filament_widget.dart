@@ -257,8 +257,9 @@ class FilamentController {
     'filament_widget/controls',
     BinaryCodec(),
   );
-  
-  static final StreamController<Map<dynamic, dynamic>> _globalEventStreamController =
+
+  static final StreamController<Map<dynamic, dynamic>>
+      _globalEventStreamController =
       StreamController<Map<dynamic, dynamic>>.broadcast();
   static StreamSubscription<dynamic>? _globalEventSub;
   static int _activeControllerCount = 0;
@@ -384,9 +385,9 @@ class FilamentController {
     _disposed = true;
     await _controllerEventSub?.cancel();
     _controllerEventSub = null;
-    
+
     _releaseGlobalEventStream();
-    
+
     if (_initialized) {
       await _methodChannel.invokeMethod<void>('disposeController', {
         'controllerId': _controllerId,
@@ -402,7 +403,7 @@ class FilamentController {
           _globalEventStreamController.add(event);
         }
       }, onError: (error) {
-         // Forward errors if needed, or log
+        // Forward errors if needed, or log
       });
     }
     _activeControllerCount++;
