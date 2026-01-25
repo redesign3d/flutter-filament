@@ -525,6 +525,7 @@ final class FilamentController {
     renderLoop.perform {
       renderer.orbitDelta(withDx: dx, dy: dy)
     }
+    renderLoop.requestFrame()
   }
 
   func orbitEnd(velocityX: Double, velocityY: Double, result: @escaping FlutterResult) {
@@ -799,6 +800,7 @@ final class FilamentController {
           }
         }
       }
+      renderLoop.requestFrame()
       return
     }
     DispatchQueue.global(qos: .userInitiated).async { [weak self] in
@@ -841,6 +843,7 @@ final class FilamentController {
             }
           }
         }
+        self.renderLoop.requestFrame()
       } catch {
         self.emitError("Failed to load resources: \(error.localizedDescription)", result: result)
       }

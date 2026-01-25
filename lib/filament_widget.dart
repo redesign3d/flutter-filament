@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/scheduler.dart';
 import 'package:flutter/services.dart';
 
 class FilamentWidget extends StatefulWidget {
@@ -293,6 +294,7 @@ class FilamentController {
       return;
     }
     _isFrameCallbackScheduled = true;
+    SchedulerBinding.instance.scheduleFrame();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _flushGestureDeltas();
     });
