@@ -12,10 +12,11 @@ void main() {
   const EventChannel eventChannel = EventChannel('filament_widget/events');
 
   setUp(() {
+    var nextId = 1;
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
         .setMockMethodCallHandler(methodChannel, (MethodCall methodCall) async {
       if (methodCall.method == 'createController') {
-        return null;
+        return nextId++;
       }
       return null;
     });

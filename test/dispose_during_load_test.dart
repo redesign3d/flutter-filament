@@ -13,11 +13,12 @@ void main() {
 
   setUp(() {
     pendingLoads.clear();
+    var nextId = 1;
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
         .setMockMethodCallHandler(channel, (MethodCall methodCall) async {
       switch (methodCall.method) {
         case 'createController':
-          return;
+          return nextId++;
         case 'disposeController':
           for (final completer in pendingLoads) {
             if (!completer.isCompleted) {
