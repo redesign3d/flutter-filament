@@ -65,6 +65,8 @@ final class FilamentController {
     self.textureId = textureId
     self.renderer = renderer
     renderLoop.addRenderer(renderer)
+    // Initial render
+    renderLoop.requestFrame()
     renderLoop.perform {
       renderer.setup(with: pixelBuffer, width: Int32(clampedWidth), height: Int32(clampedHeight))
     }
@@ -85,7 +87,9 @@ final class FilamentController {
     texture.updatePixelBuffer(pixelBuffer)
     renderLoop.perform {
       renderer.resize(with: pixelBuffer, width: Int32(clampedWidth), height: Int32(clampedHeight))
+      // Trigger a frame after resize
     }
+    renderLoop.requestFrame()
     result(nil)
   }
 
@@ -98,6 +102,7 @@ final class FilamentController {
       renderer.clearScene()
       DispatchQueue.main.async { result(nil) }
     }
+    renderLoop.requestFrame()
   }
 
   func loadModelFromAsset(assetPath: String, result: @escaping FlutterResult) {
@@ -546,12 +551,14 @@ final class FilamentController {
       renderer.zoomDelta(scaleDelta)
       DispatchQueue.main.async { result(nil) }
     }
+    renderLoop.requestFrame()
   }
   func zoomDelta(scaleDelta: Double) {
     guard let renderer else { return }
     renderLoop.perform {
       renderer.zoomDelta(withScale: scaleDelta)
     }
+    renderLoop.requestFrame()
   }
   func zoomEnd(result: @escaping FlutterResult) {
     result(nil)

@@ -142,6 +142,11 @@ class FilamentWidgetPlugin :
 
         val controller = controllers[controllerId] ?: return
 
+        when (flags) {
+            1 -> controller.setGestureActive(true) // START
+            2 -> controller.setGestureActive(false) // END
+        }
+
         when (opcode) {
             1 -> { // ORBIT
                 controller.orbitDeltaNoResult(a.toDouble(), b.toDouble())

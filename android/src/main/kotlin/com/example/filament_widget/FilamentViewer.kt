@@ -134,6 +134,8 @@ class FilamentViewer(
     }
     private var colorGrading: ColorGrading? = null
     private val orbitController = OrbitCameraController()
+    private var gestureActive = false
+
     private var cameraFovDegrees = 45.0
     private var cameraNear = 0.05
     private var cameraFar = 100.0
@@ -190,6 +192,14 @@ class FilamentViewer(
 
     fun setPaused(paused: Boolean) {
         this.paused = paused
+    }
+
+    fun setGestureActive(active: Boolean) {
+        gestureActive = active
+    }
+
+    fun wantsContinuousRendering(): Boolean {
+        return animationPlaying || gestureActive || orbitController.isAnimating
     }
 
     fun render(frameTimeNanos: Long) {

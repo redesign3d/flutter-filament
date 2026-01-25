@@ -70,7 +70,10 @@ class FilamentControllerState(
             return
         }
         current.setBufferSize(width, height)
-        renderThread.post { current.resize(width, height) }
+        renderThread.post { 
+            current.resize(width, height)
+            renderThread.requestFrame()
+        }
         result.success(null)
     }
 
@@ -82,6 +85,7 @@ class FilamentControllerState(
         }
         renderThread.post {
             current.clearScene()
+            renderThread.requestFrame()
             postSuccess(result)
         }
     }
@@ -576,6 +580,13 @@ class FilamentControllerState(
         }
     }
 
+    fun setGestureActive(active: Boolean) {
+        viewer?.setGestureActive(active)
+        if (active) {
+            renderThread.requestFrame()
+        }
+    }
+
     fun orbitDelta(dx: Double, dy: Double, result: Result) {
         val current = viewer
         if (current == null) {
@@ -592,6 +603,7 @@ class FilamentControllerState(
         val current = viewer ?: return
         renderThread.post {
             current.orbitDelta(dx, dy)
+            renderThread.requestFrame()
         }
     }
 
@@ -635,6 +647,7 @@ class FilamentControllerState(
         val current = viewer ?: return
         renderThread.post {
             current.zoomDelta(scaleDelta)
+            renderThread.requestFrame()
         }
     }
 

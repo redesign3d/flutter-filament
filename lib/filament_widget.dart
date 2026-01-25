@@ -321,18 +321,18 @@ class FilamentController {
       buffer.setInt32(20, 0, Endian.little); // Flags NONE
       await _controlChannel.send(buffer);
     }
+  }
 
-    if (maxScale != 1.0) {
-      await _ensureInitialized();
-      final buffer = ByteData(24);
-      buffer.setInt32(0, _controllerId!, Endian.little);
-      buffer.setInt32(4, 2, Endian.little); // Opcode ZOOM = 2
-      buffer.setFloat32(8, 0, Endian.little);
-      buffer.setFloat32(12, 0, Endian.little);
-      buffer.setFloat32(16, maxScale, Endian.little);
-      buffer.setInt32(20, 0, Endian.little); // Flags NONE
-      await _controlChannel.send(buffer);
-    }
+  Future<void> _sendControlMessage({int flags = 0}) async {
+    if (_controllerId == null) return;
+    final buffer = ByteData(24);
+    buffer.setInt32(0, _controllerId!, Endian.little);
+    buffer.setInt32(4, 0, Endian.little); // Opcode NOOP
+    buffer.setFloat32(8, 0, Endian.little);
+    buffer.setFloat32(12, 0, Endian.little);
+    buffer.setFloat32(16, 0, Endian.little);
+    buffer.setInt32(20, flags, Endian.little);
+    await _controlChannel.send(buffer);
   }
 
   Future<void> initialize() async {
@@ -745,10 +745,8 @@ class FilamentController {
 
   Future<void> handleOrbitStart() async {
     await _flushGestureDeltas();
-    await _ensureInitialized();
-    await _methodChannel.invokeMethod<void>('orbitStart', {
-      'controllerId': _controllerId,
-    });
+    // Use Control Channel for Start
+    await _sendControlMessage(flags: 1);
   }
 
   Future<void> handleOrbitDelta(double dx, double dy) async {
@@ -763,6 +761,9 @@ class FilamentController {
   }) async {
     await _flushGestureDeltas();
     await _ensureInitialized();
+    // Use Control Channel for End
+    await _sendControlMessage(flags: 2);
+    // Still send orbitEnd via method channel to pass velocity
     await _methodChannel.invokeMethod<void>('orbitEnd', {
       'controllerId': _controllerId,
       'velocityX': velocityX,
@@ -772,10 +773,7 @@ class FilamentController {
 
   Future<void> handleZoomStart() async {
     await _flushGestureDeltas();
-    await _ensureInitialized();
-    await _methodChannel.invokeMethod<void>('zoomStart', {
-      'controllerId': _controllerId,
-    });
+    await _sendControlMessage(flags: 1);
   }
 
   Future<void> handleZoomDelta(double scaleDelta) async {
@@ -785,10 +783,7 @@ class FilamentController {
 
   Future<void> handleZoomEnd() async {
     await _flushGestureDeltas();
-    await _ensureInitialized();
-    await _methodChannel.invokeMethod<void>('zoomEnd', {
-      'controllerId': _controllerId,
-    });
+    await _sendControlMessage(flags: 2);
   }
 
   Future<void> _ensureInitialized() async {

@@ -12,6 +12,7 @@ final class FilamentRenderLoop: NSObject {
   // State tracking
   private var isAppPaused = false
   private var displayLink: CADisplayLink?
+  private var frameRequested = false
 
   private override init() {
     thread = Thread()
@@ -67,6 +68,14 @@ final class FilamentRenderLoop: NSObject {
     setAppPaused(paused)
   }
 
+  func requestFrame() {
+    perform { [weak self] in
+       guard let self = self else { return }
+       self.frameRequested = true
+       self.updateLoopState()
+    }
+  }
+
   @objc private func threadEntryPoint() {
     autoreleasepool {
       let link = CADisplayLink(target: self, selector: #selector(onDisplayLink(_:)))
@@ -82,13 +91,25 @@ final class FilamentRenderLoop: NSObject {
   }
   
   private func updateLoopState() {
-     // We pause if app is explicitly paused OR if we have no renderers to draw
-     // (Using .allObjects.isEmpty because weakObjects might have cleared)
-     let shouldPause = isAppPaused || renderers.allObjects.isEmpty
+     // We pause if app is explicitly paused OR 
+     // if we have no renderers to draw, OR
+     // if no renderer wants continuous AND no frame is requested.
+     
+     var wantsContinuous = false
+     if !renderers.allObjects.isEmpty {
+         for renderer in renderers.allObjects {
+             if renderer.wantsContinuousRendering() {
+                 wantsContinuous = true
+                 break
+             }
+         }
+     }
+     
+     let idle = renderers.allObjects.isEmpty || (!wantsContinuous && !frameRequested)
+     let shouldPause = isAppPaused || idle
      
      if let link = displayLink, link.isPaused != shouldPause {
          link.isPaused = shouldPause
-         NSLog("[FilamentRenderLoop] DisplayLink isPaused = \(shouldPause) (appPaused=\(isAppPaused), renderers=\(renderers.allObjects.count))")
      }
   }
 
@@ -106,6 +127,13 @@ final class FilamentRenderLoop: NSObject {
     let frameTimeNanos = UInt64(link.timestamp * 1_000_000_000)
     for renderer in renderers.allObjects {
       renderer.renderFrame(frameTimeNanos)
+    }
+
+    // After rendering, if we only requested a single frame, clear the flag
+    // and check if we should pause.
+    if frameRequested {
+        frameRequested = false
+        updateLoopState()
     }
   }
 

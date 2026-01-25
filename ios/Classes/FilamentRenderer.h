@@ -80,6 +80,7 @@ typedef void (^FilamentFrameCallback)(void);
 - (void)setDebugLoggingEnabled:(BOOL)enabled;
 
 - (void)setDebugFeaturesEnabled:(BOOL)enabled;
+- (BOOL)wantsContinuousRendering;
 
 - (void)setFpsCallback:(nullable FilamentFpsCallback)callback;
 - (void)setFrameCallback:(nullable FilamentFrameCallback)callback;
@@ -104,6 +105,8 @@ typedef void (^FilamentFrameCallback)(void);
 - (void)setPaused:(BOOL)paused;
 
 - (void)destroyRenderer;
+
+- (void)setGestureActive:(BOOL)active;
 
 @end
 

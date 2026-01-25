@@ -82,6 +82,13 @@ public class FilamentWidgetPlugin: NSObject, FlutterPlugin, FlutterStreamHandler
       
       guard let controller = controllers[Int(controllerId)] else { return }
       
+      let flagsValue = data.withUnsafeBytes { $0.load(fromByteOffset: 20, as: Int32.self) }
+      if flagsValue == 1 { // START
+          controller.setGestureActive(true)
+      } else if flagsValue == 2 { // END
+          controller.setGestureActive(false)
+      }
+
       if opcode == 1 { // ORBIT
           controller.orbitDelta(dx: Double(a), dy: Double(b))
       } else if opcode == 2 { // ZOOM

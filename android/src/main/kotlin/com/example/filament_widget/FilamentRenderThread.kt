@@ -28,20 +28,30 @@ class FilamentRenderThread {
     private val frameCallback = object : Choreographer.FrameCallback {
         override fun doFrame(frameTimeNanos: Long) {
             isCallbackScheduled = false
+            frameRequested = false // Consumed
 
             // Double check state to avoid race conditions or redundant calls
             if (shouldStopLoop()) {
                 return
             }
 
+            var needsContinuous = false
             for (viewer in viewers) {
                 viewer.render(frameTimeNanos)
+                if (viewer.wantsContinuousRendering()) {
+                    needsContinuous = true
+                }
             }
-            
-            // Context: Continuous rendering
-            scheduleFrame()
+
+            // Context: Continuous rendering or pending request
+            if (needsContinuous || frameRequested) {
+                scheduleFrame()
+            }
         }
     }
+    
+    // State for lazy rendering
+    private var frameRequested = false
 
     fun post(task: () -> Unit) {
         handler.post(task)
@@ -91,6 +101,7 @@ class FilamentRenderThread {
             handler.post { requestFrame() }
             return
         }
+        frameRequested = true
         scheduleFrame()
     }
 
@@ -112,11 +123,29 @@ class FilamentRenderThread {
         if (shouldStopLoop()) {
             stopChoreographer()
         } else {
-            scheduleFrame()
+             // Only schedule if we have a pending request or active content
+             // For simplicity in updateCallbackScheduling call, we just schedule 
+             // and let doFrame decide whether to continue unless we strictly track active viewers here.
+             // But to be fully lazy, we should check if we need to start.
+             // If this is called from addViewer, we iterate.
+             var needsStart = frameRequested
+             if (!needsStart) {
+                 for (v in viewers) {
+                     if (v.wantsContinuousRendering()) {
+                         needsStart = true
+                         break
+                     }
+                 }
+             }
+             if (needsStart) {
+                scheduleFrame()
+             }
         }
     }
 
     private fun scheduleFrame() {
+        // clear request flag as we are scheduling it now (or it will be cleared in doFrame)
+        // actually doFrame clears it.
         if (!isCallbackScheduled && !shouldStopLoop()) {
             choreographer?.postFrameCallback(frameCallback)
             isCallbackScheduled = true

@@ -152,4 +152,7 @@ class OrbitCameraController {
         yawDeg = yawDeg.coerceIn(minYawDeg, maxYawDeg)
         pitchDeg = pitchDeg.coerceIn(minPitchDeg, maxPitchDeg)
     }
+
+    val isAnimating: Boolean
+        get() = inertiaEnabled && (abs(velocityYaw) > 0.0001 || abs(velocityPitch) > 0.0001)
 }

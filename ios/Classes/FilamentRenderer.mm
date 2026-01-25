@@ -726,6 +726,7 @@ std::vector<uint32_t> BuildWireframeEdges(const std::vector<uint32_t>& indices, 
     CVPixelBufferRef _pixelBuffer;
     BOOL _paused;
     BOOL _debugFeaturesEnabled;
+    BOOL _gestureActive;
     int _width;
     int _height;
 }
@@ -2280,6 +2281,28 @@ std::vector<uint32_t> BuildWireframeEdges(const std::vector<uint32_t>& indices, 
         [self updateWireframe];
         [self rebuildBoundsRenderable];
     }
+}
+
+- (void)setGestureActive:(BOOL)active {
+    _gestureActive = active;
+}
+
+- (BOOL)wantsContinuousRendering {
+    // Check if animation is playing
+    if (_animationPlaying) {
+        return YES;
+    }
+    // Check if gesture is active
+    if (_gestureActive) {
+        return YES;
+    }
+    // Check if inertia is active (velocity)
+    if (_inertiaEnabled) {
+        if (fabs(_velocityYaw) > 0.0001 || fabs(_velocityPitch) > 0.0001) {
+            return YES;
+        }
+    }
+    return NO;
 }
 
 @end
