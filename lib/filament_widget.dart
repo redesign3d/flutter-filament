@@ -1,6 +1,4 @@
 import 'dart:async';
-import 'dart:typed_data';
-import 'dart:ui' show FontFeature;
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -299,27 +297,47 @@ class FilamentController {
     });
   }
 
+  Future<void> _sendOrbitDelta(double dx, double dy) async {
+    await _ensureInitialized();
+    final buffer = ByteData(24);
+    buffer.setInt32(0, _controllerId!, Endian.little);
+    buffer.setInt32(4, 1, Endian.little); // Opcode ORBIT = 1
+    buffer.setFloat32(8, dx, Endian.little);
+    buffer.setFloat32(12, dy, Endian.little);
+    buffer.setFloat32(16, 0, Endian.little);
+    buffer.setInt32(20, 0, Endian.little); // Flags NONE
+    await _controlChannel.send(buffer);
+  }
+
+  Future<void> _sendZoomDelta(double scaleDelta) async {
+    await _ensureInitialized();
+    final buffer = ByteData(24);
+    buffer.setInt32(0, _controllerId!, Endian.little);
+    buffer.setInt32(4, 2, Endian.little); // Opcode ZOOM = 2
+    buffer.setFloat32(8, 0, Endian.little);
+    buffer.setFloat32(12, 0, Endian.little);
+    buffer.setFloat32(16, scaleDelta, Endian.little);
+    buffer.setInt32(20, 0, Endian.little); // Flags NONE
+    await _controlChannel.send(buffer);
+  }
+
   Future<void> _flushGestureDeltas() async {
     _isFrameCallbackScheduled = false;
 
     final dx = _pendingOrbitX;
     final dy = _pendingOrbitY;
-    final maxScale = _pendingZoomScale;
+    final scaleDelta = _pendingZoomScale;
 
     _pendingOrbitX = 0;
     _pendingOrbitY = 0;
     _pendingZoomScale = 1.0;
 
     if (dx != 0 || dy != 0) {
-      await _ensureInitialized();
-      final buffer = ByteData(24);
-      buffer.setInt32(0, _controllerId!, Endian.little);
-      buffer.setInt32(4, 1, Endian.little); // Opcode ORBIT = 1
-      buffer.setFloat32(8, dx, Endian.little);
-      buffer.setFloat32(12, dy, Endian.little);
-      buffer.setFloat32(16, 0, Endian.little);
-      buffer.setInt32(20, 0, Endian.little); // Flags NONE
-      await _controlChannel.send(buffer);
+      await _sendOrbitDelta(dx, dy);
+    }
+
+    if (scaleDelta != 1.0) {
+      await _sendZoomDelta(scaleDelta);
     }
   }
 
@@ -782,6 +800,11 @@ class FilamentController {
   }
 
   Future<void> handleZoomEnd() async {
+    final pendingScale = _pendingZoomScale;
+    _pendingZoomScale = 1.0;
+    if (pendingScale != 1.0) {
+      await _sendZoomDelta(pendingScale);
+    }
     await _flushGestureDeltas();
     await _sendControlMessage(flags: 2);
   }

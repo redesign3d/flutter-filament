@@ -538,6 +538,14 @@ final class FilamentController {
     }
   }
 
+  func setGestureActive(_ active: Bool) {
+    guard let renderer else { return }
+    renderLoop.perform {
+      renderer.setGestureActive(active)
+    }
+    renderLoop.requestFrame()
+  }
+
   func zoomStart(result: @escaping FlutterResult) {
     result(nil)
   }
@@ -556,7 +564,7 @@ final class FilamentController {
   func zoomDelta(scaleDelta: Double) {
     guard let renderer else { return }
     renderLoop.perform {
-      renderer.zoomDelta(withScale: scaleDelta)
+      renderer.zoomDelta(scaleDelta)
     }
     renderLoop.requestFrame()
   }

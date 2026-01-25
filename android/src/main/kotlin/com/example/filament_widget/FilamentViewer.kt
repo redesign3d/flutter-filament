@@ -1539,7 +1539,7 @@ class FilamentViewer(
         }
     }
 
-    private fun logDebug(message: String) {
+    internal fun logDebug(message: String) {
         if (debugLoggingEnabled) {
             Log.d("FilamentWidget", message)
         }

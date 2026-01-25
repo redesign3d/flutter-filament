@@ -17,6 +17,8 @@ import io.flutter.plugin.common.MethodChannel
 import io.flutter.plugin.common.MethodChannel.MethodCallHandler
 import io.flutter.plugin.common.MethodChannel.Result
 import io.flutter.view.TextureRegistry
+import java.nio.ByteBuffer
+import java.nio.ByteOrder
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.Executors
 
@@ -133,12 +135,12 @@ class FilamentWidgetPlugin :
         message.order(ByteOrder.LITTLE_ENDIAN)
         if (message.remaining() < 24) return
 
-        val controllerId = message.int
-        val opcode = message.int
-        val a = message.float
-        val b = message.float
-        val c = message.float
-        val flags = message.int
+        val controllerId = message.getInt()
+        val opcode = message.getInt()
+        val a = message.getFloat()
+        val b = message.getFloat()
+        val c = message.getFloat()
+        val flags = message.getInt()
 
         val controller = controllers[controllerId] ?: return
 

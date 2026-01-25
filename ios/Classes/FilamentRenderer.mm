@@ -4,6 +4,56 @@
 
 #undef DEBUG
 
+#if !__has_include(<filament/Engine.h>)
+@implementation FilamentRenderer
+
+- (void)setupWithPixelBuffer:(CVPixelBufferRef)pixelBuffer width:(int)width height:(int)height {}
+- (void)resizeWithPixelBuffer:(CVPixelBufferRef)pixelBuffer width:(int)width height:(int)height {}
+- (NSArray<NSString *> *)beginModelLoad:(NSData *)data { return @[]; }
+- (BOOL)finishModelLoad:(NSDictionary<NSString *, NSData *> *)resources { return NO; }
+- (void)setIndirectLightFromKTX:(NSData *)data key:(nullable NSString *)key {}
+- (void)setSkyboxFromKTX:(NSData *)data key:(nullable NSString *)key {}
+- (BOOL)setHdriFromHDR:(NSData *)data key:(nullable NSString *)key error:(NSString * _Nullable * _Nullable)error { return NO; }
+- (void)frameModel:(BOOL)useWorldOrigin {}
+- (void)setOrbitConstraintsWithMinPitch:(double)minPitch maxPitch:(double)maxPitch minYaw:(double)minYaw maxYaw:(double)maxYaw {}
+- (void)setInertiaEnabled:(BOOL)enabled {}
+- (void)setInertiaParamsWithDamping:(double)damping sensitivity:(double)sensitivity {}
+- (void)setZoomLimitsWithMinDistance:(double)minDistance maxDistance:(double)maxDistance {}
+- (void)orbitStart {}
+- (void)orbitDeltaWithDx:(double)dx dy:(double)dy {}
+- (void)orbitEndWithVelocityX:(double)velocityX velocityY:(double)velocityY {}
+- (void)zoomDelta:(double)scaleDelta {}
+- (void)setCustomCameraEnabled:(BOOL)enabled {}
+- (void)setCustomCameraLookAtWithEyeX:(double)eyeX eyeY:(double)eyeY eyeZ:(double)eyeZ centerX:(double)centerX centerY:(double)centerY centerZ:(double)centerZ upX:(double)upX upY:(double)upY upZ:(double)upZ {}
+- (void)setCustomPerspectiveWithFov:(double)fovDegrees near:(double)nearPlane far:(double)farPlane {}
+- (void)setMsaa:(int)samples {}
+- (void)setDynamicResolutionEnabled:(BOOL)enabled {}
+- (void)setEnvironmentEnabled:(BOOL)enabled {}
+- (void)setToneMappingFilmic {}
+- (void)setShadowsEnabled:(BOOL)enabled {}
+- (void)setWireframeEnabled:(BOOL)enabled {}
+- (void)setBoundingBoxesEnabled:(BOOL)enabled {}
+- (void)setDebugLoggingEnabled:(BOOL)enabled {}
+- (void)setDebugFeaturesEnabled:(BOOL)enabled {}
+- (BOOL)wantsContinuousRendering { return NO; }
+- (void)setFpsCallback:(nullable FilamentFpsCallback)callback {}
+- (void)setFrameCallback:(nullable FilamentFrameCallback)callback {}
+- (void)setResourcePath:(NSString *)path {}
+- (int)getAnimationCount { return 0; }
+- (double)getAnimationDuration:(int)index { return 0.0; }
+- (void)playAnimation:(int)index loop:(BOOL)loop {}
+- (void)pauseAnimation {}
+- (void)seekAnimation:(double)seconds {}
+- (void)setAnimationSpeed:(double)speed {}
+- (void)clearScene {}
+- (void)renderFrame:(uint64_t)frameTimeNanos {}
+- (void)setPaused:(BOOL)paused {}
+- (void)destroyRenderer {}
+- (void)setGestureActive:(BOOL)active {}
+
+@end
+#else
+
 #include <backend/BufferDescriptor.h>
 #include <algorithm>
 #include <cmath>
@@ -46,7 +96,9 @@
 #include "utils/JobSystem.h"
 #include <utils/Entity.h>
 #include <utils/EntityManager.h>
+#include <unordered_map>
 #include <unordered_set>
+#include <mutex>
 #include <string>
 #include <vector>
 #include <memory>
@@ -61,9 +113,6 @@ using namespace utils;
 @end
 
 namespace {
-#include <unordered_map>
-#include <mutex>
-
 struct EnvironmentResource {
     IndirectLight* indirectLight = nullptr;
     Skybox* skybox = nullptr;
@@ -730,6 +779,8 @@ std::vector<uint32_t> BuildWireframeEdges(const std::vector<uint32_t>& indices, 
     Texture* _iblTexture;
     Skybox* _skybox;
     Texture* _skyboxTexture;
+    std::string _currentIblKey;
+    std::string _currentSkyboxKey;
     std::unique_ptr<IBLPrefilterContext> _iblPrefilterContext;
     std::unique_ptr<IBLPrefilterContext::EquirectangularToCubemap> _iblEquirectToCubemap;
     std::unique_ptr<IBLPrefilterContext::SpecularFilter> _iblSpecularFilter;
@@ -759,8 +810,6 @@ std::vector<uint32_t> BuildWireframeEdges(const std::vector<uint32_t>& indices, 
     int _msaaSamples;
     bool _dynamicResolutionEnabled;
     bool _environmentEnabled;
-    std::string _currentIblKey;
-    std::string _currentSkyboxKey;
     Material* _debugLineMaterial;
     MaterialInstance* _wireframeMaterialInstance;
     VertexBuffer* _wireframeVertexBuffer;
@@ -2505,3 +2554,5 @@ std::vector<uint32_t> BuildWireframeEdges(const std::vector<uint32_t>& indices, 
 }
 
 @end
+
+#endif

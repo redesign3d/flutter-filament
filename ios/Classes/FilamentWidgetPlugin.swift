@@ -201,14 +201,6 @@ public class FilamentWidgetPlugin: NSObject, FlutterPlugin, FlutterStreamHandler
     return nil
   }
 
-  @objc private func appDidEnterBackground() {
-    renderLoop.setPaused(true)
-  }
-
-  @objc private func appWillEnterForeground() {
-    renderLoop.setPaused(false)
-  }
-
   private func handleCreateController(_ call: FlutterMethodCall, result: @escaping FlutterResult) {
     guard
       let args = call.arguments as? [String: Any],

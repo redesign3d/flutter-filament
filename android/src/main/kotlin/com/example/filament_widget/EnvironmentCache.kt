@@ -49,10 +49,10 @@ object EnvironmentCache {
     }
 
     private fun destroyResource(res: EnvironmentResource, engine: Engine) {
-        res.indirectLight?.let { engine.destroy(it) }
-        res.skybox?.let { engine.destroy(it) }
-        res.skyboxTexture?.let { engine.destroy(it) }
-        res.iblTexture?.let { engine.destroy(it) }
+        res.indirectLight?.let { engine.destroyIndirectLight(it) }
+        res.skybox?.let { engine.destroySkybox(it) }
+        res.skyboxTexture?.let { engine.destroyTexture(it) }
+        res.iblTexture?.let { engine.destroyTexture(it) }
     }
     
     fun clear(engine: Engine) {
