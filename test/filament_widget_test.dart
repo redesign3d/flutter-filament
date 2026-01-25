@@ -18,7 +18,8 @@ void main() {
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
         .setMockMethodCallHandler(channel, (MethodCall methodCall) async {
       if (methodCall.method == 'createController') {
-        receivedArgs.add(Map<String, Object?>.from(methodCall.arguments as Map));
+        receivedArgs
+            .add(Map<String, Object?>.from(methodCall.arguments as Map));
         return nextId++;
       }
       return null;
