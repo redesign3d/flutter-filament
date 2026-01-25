@@ -58,12 +58,35 @@ public class FilamentWidgetPlugin: NSObject, FlutterPlugin, FlutterStreamHandler
     NSLog("[FilamentWidget] messenger ready")
     let channel = FlutterMethodChannel(name: "filament_widget", binaryMessenger: messenger)
     let eventChannel = FlutterEventChannel(name: "filament_widget/events", binaryMessenger: messenger)
+    let controlChannel = FlutterBasicMessageChannel(name: "filament_widget/controls", binaryMessenger: messenger, codec: FlutterBinaryCodec.sharedInstance())
     NSLog("[FilamentWidget] channels ready")
     let instance = FilamentWidgetPlugin(registrar: registrar)
     NSLog("[FilamentWidget] instance created")
     registrar.addMethodCallDelegate(instance, channel: channel)
     eventChannel.setStreamHandler(instance)
+    controlChannel.setMessageHandler { [weak instance] message, reply in
+        instance?.handleControlMessage(message as? Data)
+        reply(nil)
+    }
     NSLog("[FilamentWidget] register done")
+  }
+
+  public func handleControlMessage(_ data: Data?) {
+      guard let data = data, data.count >= 24 else { return }
+      
+      let controllerId = data.withUnsafeBytes { $0.load(fromByteOffset: 0, as: Int32.self) }
+      let opcode = data.withUnsafeBytes { $0.load(fromByteOffset: 4, as: Int32.self) }
+      let a = data.withUnsafeBytes { $0.load(fromByteOffset: 8, as: Float32.self) }
+      let b = data.withUnsafeBytes { $0.load(fromByteOffset: 12, as: Float32.self) }
+      let c = data.withUnsafeBytes { $0.load(fromByteOffset: 16, as: Float32.self) }
+      
+      guard let controller = controllers[Int(controllerId)] else { return }
+      
+      if opcode == 1 { // ORBIT
+          controller.orbitDelta(dx: Double(a), dy: Double(b))
+      } else if opcode == 2 { // ZOOM
+          controller.zoomDelta(scaleDelta: Double(c))
+      }
   }
 
   public func handle(_ call: FlutterMethodCall, result: @escaping FlutterResult) {

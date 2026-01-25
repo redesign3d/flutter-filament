@@ -9,6 +9,8 @@ import io.flutter.embedding.engine.plugins.FlutterPlugin
 import io.flutter.embedding.engine.plugins.FlutterPlugin.FlutterPluginBinding
 import io.flutter.embedding.engine.plugins.activity.ActivityAware
 import io.flutter.embedding.engine.plugins.activity.ActivityPluginBinding
+import io.flutter.plugin.common.BasicMessageChannel
+import io.flutter.plugin.common.BinaryCodec
 import io.flutter.plugin.common.EventChannel
 import io.flutter.plugin.common.MethodCall
 import io.flutter.plugin.common.MethodChannel
@@ -25,6 +27,7 @@ class FilamentWidgetPlugin :
     ActivityAware {
     private lateinit var methodChannel: MethodChannel
     private lateinit var eventChannel: EventChannel
+    private lateinit var controlChannel: BasicMessageChannel<ByteBuffer>
     private lateinit var textureRegistry: TextureRegistry
     private lateinit var context: Context
     private lateinit var flutterAssets: FlutterPlugin.FlutterAssets
@@ -47,11 +50,17 @@ class FilamentWidgetPlugin :
         methodChannel.setMethodCallHandler(this)
         eventChannel = EventChannel(binding.binaryMessenger, "filament_widget/events")
         eventChannel.setStreamHandler(this)
+        controlChannel = BasicMessageChannel(binding.binaryMessenger, "filament_widget/controls", BinaryCodec.INSTANCE)
+        controlChannel.setMessageHandler { message, reply ->
+            handleControlMessage(message)
+            reply.reply(null)
+        }
     }
 
     override fun onDetachedFromEngine(binding: FlutterPluginBinding) {
         methodChannel.setMethodCallHandler(null)
         eventChannel.setStreamHandler(null)
+        controlChannel.setMessageHandler(null)
         for ((_, controller) in controllers) {
             controller.dispose(ResultStub())
         }
@@ -117,6 +126,30 @@ class FilamentWidgetPlugin :
 
     override fun onCancel(arguments: Any?) {
         eventSink = null
+    }
+
+    private fun handleControlMessage(message: ByteBuffer?) {
+        if (message == null) return
+        message.order(ByteOrder.LITTLE_ENDIAN)
+        if (message.remaining() < 24) return
+
+        val controllerId = message.int
+        val opcode = message.int
+        val a = message.float
+        val b = message.float
+        val c = message.float
+        val flags = message.int
+
+        val controller = controllers[controllerId] ?: return
+
+        when (opcode) {
+            1 -> { // ORBIT
+                controller.orbitDeltaNoResult(a.toDouble(), b.toDouble())
+            }
+            2 -> { // ZOOM
+                controller.zoomDeltaNoResult(c.toDouble())
+            }
+        }
     }
 
     override fun onAttachedToActivity(binding: ActivityPluginBinding) {

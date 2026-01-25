@@ -588,6 +588,13 @@ class FilamentControllerState(
         }
     }
 
+    fun orbitDeltaNoResult(dx: Double, dy: Double) {
+        val current = viewer ?: return
+        renderThread.post {
+            current.orbitDelta(dx, dy)
+        }
+    }
+
     fun orbitEnd(velocityX: Double, velocityY: Double, result: Result) {
         val current = viewer
         if (current == null) {
@@ -621,6 +628,13 @@ class FilamentControllerState(
         renderThread.post {
             current.zoomDelta(scaleDelta)
             postSuccess(result)
+        }
+    }
+
+    fun zoomDeltaNoResult(scaleDelta: Double) {
+        val current = viewer ?: return
+        renderThread.post {
+            current.zoomDelta(scaleDelta)
         }
     }
 

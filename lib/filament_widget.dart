@@ -1,4 +1,6 @@
 import 'dart:async';
+import 'dart:typed_data';
+import 'dart:ui' show FontFeature;
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -252,6 +254,11 @@ class FilamentController {
   static const EventChannel _eventChannel = EventChannel(
     'filament_widget/events',
   );
+  static const BasicMessageChannel<ByteData> _controlChannel =
+      BasicMessageChannel<ByteData>(
+    'filament_widget/controls',
+    BinaryCodec(),
+  );
   
   static final StreamController<Map<dynamic, dynamic>> _globalEventStreamController =
       StreamController<Map<dynamic, dynamic>>.broadcast();
@@ -305,19 +312,26 @@ class FilamentController {
 
     if (dx != 0 || dy != 0) {
       await _ensureInitialized();
-      await _methodChannel.invokeMethod<void>('orbitDelta', {
-        'controllerId': _controllerId,
-        'dx': dx,
-        'dy': dy,
-      });
+      final buffer = ByteData(24);
+      buffer.setInt32(0, _controllerId!, Endian.little);
+      buffer.setInt32(4, 1, Endian.little); // Opcode ORBIT = 1
+      buffer.setFloat32(8, dx, Endian.little);
+      buffer.setFloat32(12, dy, Endian.little);
+      buffer.setFloat32(16, 0, Endian.little);
+      buffer.setInt32(20, 0, Endian.little); // Flags NONE
+      await _controlChannel.send(buffer);
     }
 
     if (maxScale != 1.0) {
       await _ensureInitialized();
-      await _methodChannel.invokeMethod<void>('zoomDelta', {
-        'controllerId': _controllerId,
-        'scaleDelta': maxScale,
-      });
+      final buffer = ByteData(24);
+      buffer.setInt32(0, _controllerId!, Endian.little);
+      buffer.setInt32(4, 2, Endian.little); // Opcode ZOOM = 2
+      buffer.setFloat32(8, 0, Endian.little);
+      buffer.setFloat32(12, 0, Endian.little);
+      buffer.setFloat32(16, maxScale, Endian.little);
+      buffer.setInt32(20, 0, Endian.little); // Flags NONE
+      await _controlChannel.send(buffer);
     }
   }
 

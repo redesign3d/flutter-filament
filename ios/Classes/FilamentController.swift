@@ -515,6 +515,13 @@ final class FilamentController {
     }
   }
 
+  func orbitDelta(dx: Double, dy: Double) {
+    guard let renderer else { return }
+    renderLoop.perform {
+      renderer.orbitDelta(withDx: dx, dy: dy)
+    }
+  }
+
   func orbitEnd(velocityX: Double, velocityY: Double, result: @escaping FlutterResult) {
     guard let renderer else {
       result(nil)
@@ -540,7 +547,12 @@ final class FilamentController {
       DispatchQueue.main.async { result(nil) }
     }
   }
-
+  func zoomDelta(scaleDelta: Double) {
+    guard let renderer else { return }
+    renderLoop.perform {
+      renderer.zoomDelta(withScale: scaleDelta)
+    }
+  }
   func zoomEnd(result: @escaping FlutterResult) {
     result(nil)
   }
