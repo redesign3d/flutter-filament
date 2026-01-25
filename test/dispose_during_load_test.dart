@@ -15,10 +15,10 @@ void main() {
     pendingLoads.clear();
     var nextId = 1;
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
-        .setMockMethodCallHandler(channel, (MethodCall methodCall) async {
+        .setMockMethodCallHandler(channel, (MethodCall methodCall) {
       switch (methodCall.method) {
         case 'createController':
-          return nextId++;
+          return Future<Object?>.value(nextId++);
         case 'disposeController':
           for (final completer in pendingLoads) {
             if (!completer.isCompleted) {
@@ -29,15 +29,15 @@ void main() {
             }
           }
           pendingLoads.clear();
-          return;
+          return Future<Object?>.value(null);
         case 'loadModelFromAsset':
         case 'loadModelFromUrl':
         case 'loadModelFromFile':
-          final completer = Completer<void>();
+          final completer = Completer<Object?>();
           pendingLoads.add(completer);
           return completer.future;
       }
-      return;
+      return Future<Object?>.value(null);
     });
   });
 
