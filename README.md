@@ -18,6 +18,7 @@ Android and iOS using the texture rendering path (no PlatformView).
 - Filament version: **1.68.4** (pinned)
 - Android: minSdk **21**, arm64-v8a only
 - iOS: minimum **14.0**
+  - Simulator supported on Apple Silicon (arm64)
 
 ## Setup
 1) Fetch Filament binaries (prebuilt only):
@@ -92,4 +93,5 @@ Models used:
 ## Troubleshooting
 - Missing Filament artifacts: re-run the tooling scripts in `tooling/`.
 - iOS builds on CI require `flutter build ios --debug --no-codesign`.
+- iOS simulator builds expect Filament.xcframework slices for `ios-arm64` and `ios-arm64_x86_64-simulator`.
 - Android builds require NDK 27.x (CI installs `ndk;27.0.12077973`).

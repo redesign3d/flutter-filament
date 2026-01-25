@@ -60,3 +60,7 @@ jobs:
       - name: Build example iOS
         run: flutter build ios --debug --no-codesign
         working-directory: example
+
+      - name: Build example iOS (simulator)
+        run: flutter build ios --debug --simulator
+        working-directory: example
