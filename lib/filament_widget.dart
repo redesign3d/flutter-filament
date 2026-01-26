@@ -943,6 +943,9 @@ class FilamentController {
       throw _disposedException();
     }
     await _ensureInitialized();
+    if (_isDisposed) {
+      throw _disposedException();
+    }
     if (_state != FilamentControllerLifecycleState.viewerReady ||
         _textureId == null) {
       throw _noViewerException();
