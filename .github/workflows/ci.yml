@@ -57,6 +57,10 @@ jobs:
         run: flutter build apk --debug
         working-directory: example
 
+      - name: Build example Android (x86_64 debug)
+        run: flutter build apk --debug --target-platform=android-x64
+        working-directory: example
+
       - name: Build example iOS
         run: flutter build ios --debug --no-codesign
         working-directory: example
