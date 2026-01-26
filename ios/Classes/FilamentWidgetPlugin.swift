@@ -19,6 +19,7 @@ public class FilamentWidgetPlugin: NSObject, FlutterPlugin, FlutterStreamHandler
   }
 
   deinit {
+    shutdownControllers()
     stopObservingLifecycle()
   }
   
@@ -28,6 +29,7 @@ public class FilamentWidgetPlugin: NSObject, FlutterPlugin, FlutterStreamHandler
       NotificationCenter.default.addObserver(self, selector: #selector(appDidBecomeActive), name: UIApplication.didBecomeActiveNotification, object: nil)
       NotificationCenter.default.addObserver(self, selector: #selector(appDidEnterBackground), name: UIApplication.didEnterBackgroundNotification, object: nil)
       NotificationCenter.default.addObserver(self, selector: #selector(appWillEnterForeground), name: UIApplication.willEnterForegroundNotification, object: nil)
+      NotificationCenter.default.addObserver(self, selector: #selector(appWillTerminate), name: UIApplication.willTerminateNotification, object: nil)
       observingLifecycle = true
   }
 
@@ -52,6 +54,18 @@ public class FilamentWidgetPlugin: NSObject, FlutterPlugin, FlutterStreamHandler
   @objc func appWillEnterForeground() {
       FilamentRenderLoop.shared.setAppPaused(false)
   }
+
+    @objc func appWillTerminate() {
+      shutdownControllers()
+    }
+
+    private func shutdownControllers() {
+      renderLoop.setAppPaused(true)
+      for controller in controllers.values {
+        controller.dispose(result: { _ in })
+      }
+      controllers.removeAll()
+    }
 
   public static func register(with registrar: FlutterPluginRegistrar) {
     NSLog("[FilamentWidget] register start")

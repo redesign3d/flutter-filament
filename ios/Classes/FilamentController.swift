@@ -2,6 +2,14 @@ import Flutter
 import Foundation
 
 final class FilamentController {
+  private enum FilamentControllerLifecycleState: String {
+    case newState = "New"
+    case initialized = "Initialized"
+    case viewerReady = "ViewerReady"
+    case disposing = "Disposing"
+    case disposed = "Disposed"
+  }
+
   private let controllerId: Int
   private let textureRegistry: FlutterTextureRegistry
   private let renderLoop: FilamentRenderLoop
@@ -14,6 +22,7 @@ final class FilamentController {
   private var texture: FilamentTexture?
   private var textureId: Int64 = 0
   private var disposed = false
+  private var state: FilamentControllerLifecycleState = .newState
 
   init(
     controllerId: Int,
@@ -31,6 +40,7 @@ final class FilamentController {
     self.assetLookup = assetLookup
     self.debugFeaturesEnabled = debugFeaturesEnabled
     self.eventEmitter = eventEmitter
+    transition(to: .initialized)
   }
 
   deinit {
@@ -50,6 +60,15 @@ final class FilamentController {
       return nil
     }
     return renderer
+  }
+
+  private func transition(to next: FilamentControllerLifecycleState) {
+    guard state != next else { return }
+    NSLog("[FilamentController] Controller %d state %@ -> %@", controllerId, state.rawValue, next.rawValue)
+    state = next
+    if next == .disposing || next == .disposed {
+      disposed = true
+    }
   }
 
   func createViewer(width: Int, height: Int, result: FilamentResultOnce) {
@@ -81,6 +100,7 @@ final class FilamentController {
     self.texture = texture
     self.textureId = textureId
     self.renderer = renderer
+    transition(to: .viewerReady)
     renderLoop.addRenderer(renderer)
     // Initial render
     renderLoop.requestFrame()
@@ -709,6 +729,10 @@ final class FilamentController {
   }
 
   func getCacheSizeBytes(result: FilamentResultOnce) {
+    if disposed {
+      result.error(code: FilamentErrors.disposed, message: "Controller disposed.")
+      return
+    }
     DispatchQueue.global(qos: .utility).async { [cacheManager] in
       let size = cacheManager.getCacheSizeBytes()
       result.success(size)
@@ -716,6 +740,10 @@ final class FilamentController {
   }
 
   func clearCache(result: FilamentResultOnce) {
+    if disposed {
+      result.error(code: FilamentErrors.disposed, message: "Controller disposed.")
+      return
+    }
     DispatchQueue.global(qos: .utility).async { [cacheManager] in
       let success = cacheManager.clearCache()
       if success {
@@ -731,11 +759,11 @@ final class FilamentController {
   }
 
   func dispose(result: FilamentResultOnce) {
-    if disposed {
+    if state == .disposed || state == .disposing {
       result.success(nil)
       return
     }
-    disposed = true
+    transition(to: .disposing)
     if let renderer {
       renderLoop.removeRenderer(renderer)
       renderLoop.perform {
@@ -747,6 +775,7 @@ final class FilamentController {
     }
     texture = nil
     renderer = nil
+    transition(to: .disposed)
     result.success(nil)
   }
 
