@@ -55,7 +55,7 @@ SIM_X86_64_LIB="$SIM_X86_64_DIR/libfilament_all.a"
 cd "$SIM_OBJ_DIR"
 ar -x "$DEVICE_LIB"
 find "$SIM_OBJ_DIR" -name "*.o" -print0 | while IFS= read -r -d '' obj; do
-  xcrun vtool -set-build-version ios-simulator 14.0 14.0 -replace -output "$obj" "$obj"
+  xcrun vtool -set-build-version iossim 14.0 14.0 -replace -output "$obj" "$obj"
 done
 /usr/bin/libtool -static -o "$SIM_ARM64_LIB" "$SIM_OBJ_DIR"/*.o
 
