@@ -93,7 +93,8 @@ void main() {
 
     final controller = FilamentController();
     await controller.initialize();
-    await controller.createViewer(widthPx: 100, heightPx: 100, devicePixelRatio: 1.0);
+    await controller.createViewer(
+        widthPx: 100, heightPx: 100, devicePixelRatio: 1.0);
     await controller.dispose();
 
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger

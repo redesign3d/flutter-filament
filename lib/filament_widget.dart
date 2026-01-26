@@ -291,12 +291,12 @@ class FilamentController {
   static StreamSubscription<dynamic>? _globalEventSub;
   static int _activeControllerCount = 0;
 
-    int? _controllerId;
-    int? _textureId;
-    FilamentControllerLifecycleState _state =
+  int? _controllerId;
+  int? _textureId;
+  FilamentControllerLifecycleState _state =
       FilamentControllerLifecycleState.newState;
   Future<void>? _initializeFuture;
-    Future<void>? _disposeFuture;
+  Future<void>? _disposeFuture;
   StreamSubscription<Map<dynamic, dynamic>>? _controllerEventSub;
   final StreamController<FilamentEvent> _eventController =
       StreamController<FilamentEvent>.broadcast();
