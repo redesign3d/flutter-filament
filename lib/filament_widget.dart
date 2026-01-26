@@ -340,14 +340,14 @@ class FilamentController {
   }
 
   PlatformException _disposedException() {
-    return const PlatformException(
+    return PlatformException(
       code: 'filament_disposed',
       message: 'Controller disposed.',
     );
   }
 
   PlatformException _noViewerException() {
-    return const PlatformException(
+    return PlatformException(
       code: 'filament_no_viewer',
       message: 'Viewer not initialized.',
     );
@@ -931,7 +931,7 @@ class FilamentController {
       await initialize();
     }
     if (_controllerId == null) {
-      throw const PlatformException(
+      throw PlatformException(
         code: 'filament_native',
         message: 'FilamentController not initialized.',
       );
