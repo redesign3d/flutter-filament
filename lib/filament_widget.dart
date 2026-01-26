@@ -237,6 +237,32 @@ class _FilamentGestureLayerState extends State<_FilamentGestureLayer> {
   }
 }
 
+enum FilamentControllerLifecycleState {
+  newState,
+  initialized,
+  viewerReady,
+  disposing,
+  disposed,
+}
+
+extension FilamentControllerLifecycleStateLabel
+    on FilamentControllerLifecycleState {
+  String get label {
+    switch (this) {
+      case FilamentControllerLifecycleState.newState:
+        return 'New';
+      case FilamentControllerLifecycleState.initialized:
+        return 'Initialized';
+      case FilamentControllerLifecycleState.viewerReady:
+        return 'ViewerReady';
+      case FilamentControllerLifecycleState.disposing:
+        return 'Disposing';
+      case FilamentControllerLifecycleState.disposed:
+        return 'Disposed';
+    }
+  }
+}
+
 class FilamentController {
   FilamentController({
     this.debugFeaturesEnabled = kDebugMode,
@@ -267,12 +293,14 @@ class FilamentController {
 
   int? _controllerId;
   int? _textureId;
-  bool _initialized = false;
-  bool _disposed = false;
+  FilamentControllerLifecycleState _state =
+      FilamentControllerLifecycleState.newState;
   Future<void>? _initializeFuture;
+  Future<void>? _disposeFuture;
   StreamSubscription<Map<dynamic, dynamic>>? _controllerEventSub;
   final StreamController<FilamentEvent> _eventController =
       StreamController<FilamentEvent>.broadcast();
+  bool _eventStreamRegistered = false;
 
   final ValueNotifier<double> fps = ValueNotifier<double>(0.0);
   final Completer<void> _viewerReadyCompleter = Completer<void>();
@@ -291,6 +319,40 @@ class FilamentController {
   Stream<FilamentEvent> get events => _eventController.stream;
   Future<void> get onViewerReady => _viewerReadyCompleter.future;
 
+  bool get _isInitialized =>
+      _state == FilamentControllerLifecycleState.initialized ||
+      _state == FilamentControllerLifecycleState.viewerReady;
+
+  bool get _isDisposed =>
+      _state == FilamentControllerLifecycleState.disposing ||
+      _state == FilamentControllerLifecycleState.disposed;
+
+  void _transitionTo(FilamentControllerLifecycleState next) {
+    if (_state == next) {
+      return;
+    }
+    if (kDebugMode) {
+      debugPrint(
+        '[FilamentController] State ${_state.label} -> ${next.label}',
+      );
+    }
+    _state = next;
+  }
+
+  PlatformException _disposedException() {
+    return PlatformException(
+      code: 'filament_disposed',
+      message: 'Controller disposed.',
+    );
+  }
+
+  PlatformException _noViewerException() {
+    return PlatformException(
+      code: 'filament_no_viewer',
+      message: 'Viewer not initialized.',
+    );
+  }
+
   void _scheduleGestureFlush() {
     if (_isFrameCallbackScheduled) {
       return;
@@ -303,7 +365,7 @@ class FilamentController {
   }
 
   Future<void> _sendOrbitDelta(double dx, double dy) async {
-    await _ensureInitialized();
+    await _ensureViewerReady();
     final buffer = ByteData(24);
     buffer.setInt32(0, _controllerId!, Endian.little);
     buffer.setInt32(4, 1, Endian.little); // Opcode ORBIT = 1
@@ -315,7 +377,7 @@ class FilamentController {
   }
 
   Future<void> _sendZoomDelta(double scaleDelta) async {
-    await _ensureInitialized();
+    await _ensureViewerReady();
     final buffer = ByteData(24);
     buffer.setInt32(0, _controllerId!, Endian.little);
     buffer.setInt32(4, 2, Endian.little); // Opcode ZOOM = 2
@@ -347,7 +409,7 @@ class FilamentController {
   }
 
   Future<void> _sendControlMessage({int flags = 0}) async {
-    if (_controllerId == null) return;
+    await _ensureViewerReady();
     final buffer = ByteData(24);
     buffer.setInt32(0, _controllerId!, Endian.little);
     buffer.setInt32(4, 0, Endian.little); // Opcode NOOP
@@ -359,10 +421,10 @@ class FilamentController {
   }
 
   Future<void> initialize() async {
-    if (_disposed) {
-      throw StateError('FilamentController is disposed');
+    if (_isDisposed) {
+      throw _disposedException();
     }
-    if (_initialized) {
+    if (_isInitialized) {
       return;
     }
     if (_initializeFuture != null) {
@@ -378,50 +440,69 @@ class FilamentController {
           'debugFeaturesEnabled': debugFeaturesEnabled,
         },
       );
-      if (_disposed) {
+      if (_isDisposed) {
         if (controllerId != null) {
           await _methodChannel.invokeMethod<void>('disposeController', {
             'controllerId': controllerId,
           });
         }
+        _transitionTo(FilamentControllerLifecycleState.disposed);
         completer.complete();
         return;
       }
       if (controllerId == null) {
+        _transitionTo(FilamentControllerLifecycleState.disposed);
         throw StateError('Failed to create native controller.');
       }
       _controllerId = controllerId;
     } finally {
       completer.complete();
     }
-    if (_disposed) return; // check again after await
+    if (_isDisposed) return; // check again after await
 
     _ensureGlobalEventStream();
+    _eventStreamRegistered = true;
     _controllerEventSub = _globalEventStreamController.stream.listen((event) {
       if (event['controllerId'] == _controllerId) {
         _handleEvent(event);
       }
     });
 
-    _initialized = true;
+    _transitionTo(FilamentControllerLifecycleState.initialized);
   }
 
   Future<void> dispose() async {
-    if (_disposed) {
+    if (_disposeFuture != null) {
+      await _disposeFuture;
       return;
     }
-    _disposed = true;
+    final completer = Completer<void>();
+    _disposeFuture = completer.future;
+    if (_state == FilamentControllerLifecycleState.disposed) {
+      completer.complete();
+      return;
+    }
+    if (_state != FilamentControllerLifecycleState.disposing) {
+      _transitionTo(FilamentControllerLifecycleState.disposing);
+    }
     await _controllerEventSub?.cancel();
     _controllerEventSub = null;
 
-    _releaseGlobalEventStream();
+    if (_eventStreamRegistered) {
+      _releaseGlobalEventStream();
+      _eventStreamRegistered = false;
+    }
 
     if (_controllerId != null) {
       await _methodChannel.invokeMethod<void>('disposeController', {
         'controllerId': _controllerId,
       });
     }
+    _textureId = null;
+    _controllerId = null;
+    _transitionTo(FilamentControllerLifecycleState.disposed);
     await _eventController.close();
+    completer.complete();
   }
 
   static void _ensureGlobalEventStream() {
@@ -451,9 +532,13 @@ class FilamentController {
     required int heightPx,
     required double devicePixelRatio,
   }) async {
-    if (_disposed) return;
+    if (_isDisposed) {
+      throw _disposedException();
+    }
     await _ensureInitialized();
-    if (_disposed) return;
+    if (_isDisposed) {
+      throw _disposedException();
+    }
 
     final textureId = await _methodChannel.invokeMethod<int>('createViewer', {
       'controllerId': _controllerId,
@@ -462,16 +547,16 @@ class FilamentController {
       'dpr': devicePixelRatio,
     });
     _textureId = textureId;
+    if (textureId != null) {
+      _transitionTo(FilamentControllerLifecycleState.viewerReady);
+    }
     if (!_viewerReadyCompleter.isCompleted) {
       _viewerReadyCompleter.complete();
     }
   }
 
   Future<void> resize(int widthPx, int heightPx, double dpr) async {
-    await _ensureInitialized();
-    if (_textureId == null) {
-      return;
-    }
+    await _ensureViewerReady();
     await _methodChannel.invokeMethod<void>('resize', {
       'controllerId': _controllerId,
       'width': widthPx,
@@ -481,14 +566,14 @@ class FilamentController {
   }
 
   Future<void> clearScene() async {
-    await _ensureInitialized();
+    await _ensureViewerReady();
     await _methodChannel.invokeMethod<void>('clearScene', {
       'controllerId': _controllerId,
     });
   }
 
   Future<void> loadModelFromAsset(String assetPath) async {
-    await _ensureInitialized();
+    await _ensureViewerReady();
     await _methodChannel.invokeMethod<void>('loadModelFromAsset', {
       'controllerId': _controllerId,
       'assetPath': assetPath,
@@ -496,7 +581,7 @@ class FilamentController {
   }
 
   Future<void> loadModelFromUrl(String url) async {
-    await _ensureInitialized();
+    await _ensureViewerReady();
     await _methodChannel.invokeMethod<void>('loadModelFromUrl', {
       'controllerId': _controllerId,
       'url': url,
@@ -504,7 +589,7 @@ class FilamentController {
   }
 
   Future<void> loadModelFromFile(String filePath) async {
-    await _ensureInitialized();
+    await _ensureViewerReady();
     await _methodChannel.invokeMethod<void>('loadModelFromFile', {
       'controllerId': _controllerId,
       'filePath': filePath,
@@ -527,7 +612,7 @@ class FilamentController {
   }
 
   Future<void> setIBLFromAsset(String ktxPath) async {
-    await _ensureInitialized();
+    await _ensureViewerReady();
     await _methodChannel.invokeMethod<void>('setIBLFromAsset', {
       'controllerId': _controllerId,
       'ktxPath': ktxPath,
@@ -535,7 +620,7 @@ class FilamentController {
   }
 
   Future<void> setSkyboxFromAsset(String ktxPath) async {
-    await _ensureInitialized();
+    await _ensureViewerReady();
     await _methodChannel.invokeMethod<void>('setSkyboxFromAsset', {
       'controllerId': _controllerId,
       'ktxPath': ktxPath,
@@ -543,7 +628,7 @@ class FilamentController {
   }
 
   Future<void> setHdriFromAsset(String hdrPath) async {
-    await _ensureInitialized();
+    await _ensureViewerReady();
     await _methodChannel.invokeMethod<void>('setHdriFromAsset', {
       'controllerId': _controllerId,
       'hdrPath': hdrPath,
@@ -551,7 +636,7 @@ class FilamentController {
   }
 
   Future<void> setIBLFromUrl(String url) async {
-    await _ensureInitialized();
+    await _ensureViewerReady();
     await _methodChannel.invokeMethod<void>('setIBLFromUrl', {
       'controllerId': _controllerId,
       'url': url,
@@ -559,7 +644,7 @@ class FilamentController {
   }
 
   Future<void> setSkyboxFromUrl(String url) async {
-    await _ensureInitialized();
+    await _ensureViewerReady();
     await _methodChannel.invokeMethod<void>('setSkyboxFromUrl', {
       'controllerId': _controllerId,
       'url': url,
@@ -567,7 +652,7 @@ class FilamentController {
   }
 
   Future<void> setHdriFromUrl(String url) async {
-    await _ensureInitialized();
+    await _ensureViewerReady();
     await _methodChannel.invokeMethod<void>('setHdriFromUrl', {
       'controllerId': _controllerId,
       'url': url,
@@ -575,7 +660,7 @@ class FilamentController {
   }
 
   Future<void> setEnvironmentEnabled(bool enabled) async {
-    await _ensureInitialized();
+    await _ensureViewerReady();
     await _methodChannel.invokeMethod<void>('setEnvironmentEnabled', {
       'controllerId': _controllerId,
       'enabled': enabled,
@@ -583,7 +668,7 @@ class FilamentController {
   }
 
   Future<void> setShadowsEnabled(bool enabled) async {
-    await _ensureInitialized();
+    await _ensureViewerReady();
     await _methodChannel.invokeMethod<void>('setShadowsEnabled', {
       'controllerId': _controllerId,
       'enabled': enabled,
@@ -591,7 +676,7 @@ class FilamentController {
   }
 
   Future<void> frameModel({bool useWorldOrigin = false}) async {
-    await _ensureInitialized();
+    await _ensureViewerReady();
     await _methodChannel.invokeMethod<void>('frameModel', {
       'controllerId': _controllerId,
       'useWorldOrigin': useWorldOrigin,
@@ -604,7 +689,7 @@ class FilamentController {
     required double minYawDeg,
     required double maxYawDeg,
   }) async {
-    await _ensureInitialized();
+    await _ensureViewerReady();
     await _methodChannel.invokeMethod<void>('setOrbitConstraints', {
       'controllerId': _controllerId,
       'minPitchDeg': minPitchDeg,
@@ -615,7 +700,7 @@ class FilamentController {
   }
 
   Future<void> setInertiaEnabled(bool enabled) async {
-    await _ensureInitialized();
+    await _ensureViewerReady();
     await _methodChannel.invokeMethod<void>('setInertiaEnabled', {
       'controllerId': _controllerId,
       'enabled': enabled,
@@ -626,7 +711,7 @@ class FilamentController {
     double damping = 0.9,
     double sensitivity = 1.0,
   }) async {
-    await _ensureInitialized();
+    await _ensureViewerReady();
     await _methodChannel.invokeMethod<void>('setInertiaParams', {
       'controllerId': _controllerId,
       'damping': damping,
@@ -638,7 +723,7 @@ class FilamentController {
     required double minDistance,
     required double maxDistance,
   }) async {
-    await _ensureInitialized();
+    await _ensureViewerReady();
     await _methodChannel.invokeMethod<void>('setZoomLimits', {
       'controllerId': _controllerId,
       'minDistance': minDistance,
@@ -647,7 +732,7 @@ class FilamentController {
   }
 
   Future<void> setCustomCameraEnabled(bool enabled) async {
-    await _ensureInitialized();
+    await _ensureViewerReady();
     await _methodChannel.invokeMethod<void>('setCustomCameraEnabled', {
       'controllerId': _controllerId,
       'enabled': enabled,
@@ -665,7 +750,7 @@ class FilamentController {
     required double upY,
     required double upZ,
   }) async {
-    await _ensureInitialized();
+    await _ensureViewerReady();
     await _methodChannel.invokeMethod<void>('setCustomCameraLookAt', {
       'controllerId': _controllerId,
       'eyeX': eyeX,
@@ -685,7 +770,7 @@ class FilamentController {
     required double near,
     required double far,
   }) async {
-    await _ensureInitialized();
+    await _ensureViewerReady();
     await _methodChannel.invokeMethod<void>('setCustomPerspective', {
       'controllerId': _controllerId,
       'fovDegrees': fovDegrees,
@@ -695,7 +780,7 @@ class FilamentController {
   }
 
   Future<int> getAnimationCount() async {
-    await _ensureInitialized();
+    await _ensureViewerReady();
     final count = await _methodChannel.invokeMethod<int>('getAnimationCount', {
       'controllerId': _controllerId,
     });
@@ -703,7 +788,7 @@ class FilamentController {
   }
 
   Future<void> playAnimation(int index, {bool loop = true}) async {
-    await _ensureInitialized();
+    await _ensureViewerReady();
     await _methodChannel.invokeMethod<void>('playAnimation', {
       'controllerId': _controllerId,
       'index': index,
@@ -712,14 +797,14 @@ class FilamentController {
   }
 
   Future<void> pauseAnimation() async {
-    await _ensureInitialized();
+    await _ensureViewerReady();
     await _methodChannel.invokeMethod<void>('pauseAnimation', {
       'controllerId': _controllerId,
     });
   }
 
   Future<void> seekAnimation(double seconds) async {
-    await _ensureInitialized();
+    await _ensureViewerReady();
     await _methodChannel.invokeMethod<void>('seekAnimation', {
       'controllerId': _controllerId,
       'seconds': seconds,
@@ -727,7 +812,7 @@ class FilamentController {
   }
 
   Future<void> setAnimationSpeed(double speed) async {
-    await _ensureInitialized();
+    await _ensureViewerReady();
     await _methodChannel.invokeMethod<void>('setAnimationSpeed', {
       'controllerId': _controllerId,
       'speed': speed,
@@ -735,7 +820,7 @@ class FilamentController {
   }
 
   Future<double> getAnimationDuration(int index) async {
-    await _ensureInitialized();
+    await _ensureViewerReady();
     final duration = await _methodChannel.invokeMethod<double>(
       'getAnimationDuration',
       {'controllerId': _controllerId, 'index': index},
@@ -744,7 +829,7 @@ class FilamentController {
   }
 
   Future<void> setMsaa(int samples) async {
-    await _ensureInitialized();
+    await _ensureViewerReady();
     await _methodChannel.invokeMethod<void>('setMsaa', {
       'controllerId': _controllerId,
       'samples': samples,
@@ -752,7 +837,7 @@ class FilamentController {
   }
 
   Future<void> setDynamicResolutionEnabled(bool enabled) async {
-    await _ensureInitialized();
+    await _ensureViewerReady();
     await _methodChannel.invokeMethod<void>('setDynamicResolutionEnabled', {
       'controllerId': _controllerId,
       'enabled': enabled,
@@ -760,14 +845,14 @@ class FilamentController {
   }
 
   Future<void> setToneMappingFilmic() async {
-    await _ensureInitialized();
+    await _ensureViewerReady();
     await _methodChannel.invokeMethod<void>('setToneMappingFilmic', {
       'controllerId': _controllerId,
     });
   }
 
   Future<void> setWireframeEnabled(bool enabled) async {
-    await _ensureInitialized();
+    await _ensureViewerReady();
     await _methodChannel.invokeMethod<void>('setWireframeEnabled', {
       'controllerId': _controllerId,
       'enabled': enabled,
@@ -775,7 +860,7 @@ class FilamentController {
   }
 
   Future<void> setBoundingBoxesEnabled(bool enabled) async {
-    await _ensureInitialized();
+    await _ensureViewerReady();
     await _methodChannel.invokeMethod<void>('setBoundingBoxesEnabled', {
       'controllerId': _controllerId,
       'enabled': enabled,
@@ -783,7 +868,7 @@ class FilamentController {
   }
 
   Future<void> setDebugLoggingEnabled(bool enabled) async {
-    await _ensureInitialized();
+    await _ensureViewerReady();
     await _methodChannel.invokeMethod<void>('setDebugLoggingEnabled', {
       'controllerId': _controllerId,
       'enabled': enabled,
@@ -807,7 +892,7 @@ class FilamentController {
     required double velocityY,
   }) async {
     await _flushGestureDeltas();
-    await _ensureInitialized();
+    await _ensureViewerReady();
     // Use Control Channel for End
     await _sendControlMessage(flags: 2);
     // Still send orbitEnd via method channel to pass velocity
@@ -839,11 +924,31 @@ class FilamentController {
   }
 
   Future<void> _ensureInitialized() async {
-    if (!_initialized) {
+    if (_isDisposed) {
+      throw _disposedException();
+    }
+    if (!_isInitialized) {
       await initialize();
     }
     if (_controllerId == null) {
-      throw StateError('FilamentController not initialized.');
+      throw PlatformException(
+        code: 'filament_native',
+        message: 'FilamentController not initialized.',
+      );
+    }
+  }
+
+  Future<void> _ensureViewerReady() async {
+    if (_isDisposed) {
+      throw _disposedException();
+    }
+    await _ensureInitialized();
+    if (_isDisposed) {
+      throw _disposedException();
+    }
+    if (_state != FilamentControllerLifecycleState.viewerReady ||
+        _textureId == null) {
+      throw _noViewerException();
     }
   }
 

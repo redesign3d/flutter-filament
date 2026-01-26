@@ -65,6 +65,7 @@ class FilamentWidgetPlugin :
         methodChannel.setMethodCallHandler(null)
         eventChannel.setStreamHandler(null)
         controlChannel.setMessageHandler(null)
+        renderThread?.setAppPaused(true)
         for ((_, controller) in controllers) {
             controller.dispose(ResultStub())
         }

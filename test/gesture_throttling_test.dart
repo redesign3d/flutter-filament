@@ -23,6 +23,9 @@ void main() {
       if (methodCall.method == 'createController') {
         return nextId++;
       }
+      if (methodCall.method == 'createViewer') {
+        return 123;
+      }
       return null;
     });
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
@@ -57,6 +60,11 @@ void main() {
       (WidgetTester tester) async {
     final controller = FilamentController();
     await controller.initialize();
+    await controller.createViewer(
+      widthPx: 100,
+      heightPx: 100,
+      devicePixelRatio: 1.0,
+    );
     log.clear(); // remove createController call
 
     // Simulate 3 small moves
@@ -86,6 +94,11 @@ void main() {
       (WidgetTester tester) async {
     final controller = FilamentController();
     await controller.initialize();
+    await controller.createViewer(
+      widthPx: 100,
+      heightPx: 100,
+      devicePixelRatio: 1.0,
+    );
     log.clear();
 
     await controller.handleZoomDelta(1.1);
@@ -110,6 +123,11 @@ void main() {
       (WidgetTester tester) async {
     final controller = FilamentController();
     await controller.initialize();
+    await controller.createViewer(
+      widthPx: 100,
+      heightPx: 100,
+      devicePixelRatio: 1.0,
+    );
     log.clear();
 
     await controller.handleOrbitDelta(5.0, 0.0);
@@ -132,6 +150,11 @@ void main() {
       (WidgetTester tester) async {
     final controller = FilamentController();
     await controller.initialize();
+    await controller.createViewer(
+      widthPx: 100,
+      heightPx: 100,
+      devicePixelRatio: 1.0,
+    );
     log.clear();
 
     await controller.handleZoomDelta(2.0);

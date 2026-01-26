@@ -45,4 +45,59 @@ void main() {
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
         .setMockMethodCallHandler(channel, null);
   });
+
+  test('FilamentController dispose is idempotent', () async {
+    const MethodChannel channel = MethodChannel('filament_widget');
+    var nextId = 1;
+    var disposeCalls = 0;
+
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(channel, (MethodCall methodCall) async {
+      switch (methodCall.method) {
+        case 'createController':
+          return nextId++;
+        case 'disposeController':
+          disposeCalls += 1;
+          return null;
+      }
+      return null;
+    });
+
+    final controller = FilamentController();
+    await controller.initialize();
+    await controller.dispose();
+    await controller.dispose();
+
+    expect(disposeCalls, 1);
+
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(channel, null);
+  });
+
+  test('Dispose after createViewer does not crash', () async {
+    const MethodChannel channel = MethodChannel('filament_widget');
+    var nextId = 1;
+
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(channel, (MethodCall methodCall) async {
+      switch (methodCall.method) {
+        case 'createController':
+          return nextId++;
+        case 'createViewer':
+          return 123;
+        case 'disposeController':
+          return null;
+      }
+      return null;
+    });
+
+    final controller = FilamentController();
+    await controller.initialize();
+    await controller.createViewer(
+        widthPx: 100, heightPx: 100, devicePixelRatio: 1.0);
+    await controller.dispose();
+
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(channel, null);
+  });
 }

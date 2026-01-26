@@ -19,6 +19,8 @@ void main() {
       switch (methodCall.method) {
         case 'createController':
           return Future<Object?>.value(nextId++);
+        case 'createViewer':
+          return Future<Object?>.value(123);
         case 'disposeController':
           for (final completer in pendingLoads) {
             if (!completer.isCompleted) {
@@ -59,6 +61,11 @@ void main() {
   test('loadModelFromAsset completes when disposed', () async {
     final controller = FilamentController();
     await controller.initialize();
+    await controller.createViewer(
+      widthPx: 100,
+      heightPx: 100,
+      devicePixelRatio: 1.0,
+    );
 
     final loadFuture = controller.loadModelFromAsset('assets/model.glb');
     final expectation = expectDisposed(loadFuture);
@@ -69,6 +76,11 @@ void main() {
   test('loadModelFromUrl completes when disposed', () async {
     final controller = FilamentController();
     await controller.initialize();
+    await controller.createViewer(
+      widthPx: 100,
+      heightPx: 100,
+      devicePixelRatio: 1.0,
+    );
 
     final loadFuture = controller.loadModelFromUrl('https://example.com/a.glb');
     final expectation = expectDisposed(loadFuture);
