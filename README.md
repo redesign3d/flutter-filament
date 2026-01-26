@@ -16,7 +16,9 @@ Android and iOS using the texture rendering path (no PlatformView).
 
 ## Requirements
 - Filament version: **1.68.4** (pinned)
-- Android: minSdk **21**, arm64-v8a only
+- Android: minSdk **21**
+  - Debug: arm64-v8a + x86_64 (emulator)
+  - Release: arm64-v8a only
 - iOS: minimum **14.0**
   - Simulator uses x86_64 slices (Apple Silicon requires Rosetta)
 
