@@ -6,9 +6,19 @@ ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 OUT_DIR="$ROOT_DIR/ios"
 XCFRAMEWORK_PATH="$OUT_DIR/Filament.xcframework"
 
+has_required_slices() {
+  [[ -d "$XCFRAMEWORK_PATH/ios-arm64" ]] || return 1
+  [[ -d "$XCFRAMEWORK_PATH/ios-x86_64-simulator" ]] || return 1
+  return 0
+}
+
 if [[ -d "$XCFRAMEWORK_PATH" ]]; then
-  echo "Filament xcframework already exists at $XCFRAMEWORK_PATH"
-  exit 0
+  if has_required_slices; then
+    echo "Filament xcframework already exists at $XCFRAMEWORK_PATH"
+    exit 0
+  fi
+  echo "Existing xcframework missing simulator slices; rebuilding."
+  rm -rf "$XCFRAMEWORK_PATH"
 fi
 
 WORK_DIR="$(mktemp -d)"
@@ -24,22 +34,23 @@ INCLUDE_DIR="$SRC_DIR/include"
 
 mkdir -p "$OUT_DIR"
 
-MERGED_LIB="$WORK_DIR/libfilament_all.a"
-/usr/bin/libtool -static -o "$MERGED_LIB" "$LIB_DIR"/*.a
+DEVICE_DIR="$WORK_DIR/device_arm64"
+SIM_X86_64_DIR="$WORK_DIR/sim_x86_64"
+mkdir -p "$DEVICE_DIR" "$SIM_X86_64_DIR"
 
-ARM64_DIR="$WORK_DIR/arm64"
-X86_64_DIR="$WORK_DIR/x86_64"
-mkdir -p "$ARM64_DIR" "$X86_64_DIR"
+DEVICE_LIB="$DEVICE_DIR/libfilament_all.a"
+SIM_X86_64_LIB="$SIM_X86_64_DIR/libfilament_all.a"
 
-ARM64_LIB="$ARM64_DIR/libfilament_all.a"
-X86_64_LIB="$X86_64_DIR/libfilament_all.a"
 
-/usr/bin/lipo -extract arm64 "$MERGED_LIB" -output "$ARM64_LIB"
-/usr/bin/lipo -extract x86_64 "$MERGED_LIB" -output "$X86_64_LIB"
+/usr/bin/libtool -static -arch_only arm64 -o "$DEVICE_LIB" "$LIB_DIR"/*.a
+/usr/bin/libtool -static -arch_only x86_64 -o "$SIM_X86_64_LIB" "$LIB_DIR"/*.a
+
+echo "Device lib architectures: $(/usr/bin/lipo -info "$DEVICE_LIB")"
+echo "Simulator x86_64 lib architectures: $(/usr/bin/lipo -info "$SIM_X86_64_LIB")"
 
 /usr/bin/xcodebuild -create-xcframework \
-  -library "$ARM64_LIB" -headers "$INCLUDE_DIR" \
-  -library "$X86_64_LIB" -headers "$INCLUDE_DIR" \
+  -library "$DEVICE_LIB" -headers "$INCLUDE_DIR" \
+  -library "$SIM_X86_64_LIB" -headers "$INCLUDE_DIR" \
   -output "$XCFRAMEWORK_PATH"
 
 cp "$SRC_DIR/LICENSE" "$OUT_DIR/Filament.LICENSE"

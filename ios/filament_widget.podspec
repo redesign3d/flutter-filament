@@ -27,7 +27,7 @@ A new Flutter plugin project.
     'DEFINES_MODULE' => 'YES',
     'CLANG_CXX_LANGUAGE_STANDARD' => 'c++17',
     'CLANG_CXX_LIBRARY' => 'libc++',
-    'EXCLUDED_ARCHS[sdk=iphonesimulator*]' => 'i386 arm64',
+    'EXCLUDED_ARCHS[sdk=iphonesimulator*]' => 'arm64 i386',
     'HEADER_SEARCH_PATHS' => '"$(PODS_TARGET_SRCROOT)/Classes" "$(PODS_TARGET_SRCROOT)/Filament.xcframework/ios-arm64/Headers" "$(PODS_TARGET_SRCROOT)/Filament.xcframework/ios-x86_64-simulator/Headers"'
   }
   s.swift_version = '5.0'
