@@ -55,7 +55,7 @@ SIM_X86_64_LIB="$SIM_X86_64_DIR/libfilament_all.a"
 cd "$SIM_OBJ_DIR"
 ar -x "$DEVICE_LIB"
 find "$SIM_OBJ_DIR" -name "*.o" -print > "$SIM_OBJ_DIR/objects.txt"
-xcrun ld -r -arch arm64 -platform_version iossim 14.0 14.0 \
+xcrun ld -r -arch arm64 -platform_version ios-simulator 14.0 14.0 \
   -o "$SIM_OBJ_DIR/sim_arm64.o" -filelist "$SIM_OBJ_DIR/objects.txt"
 /usr/bin/libtool -static -o "$SIM_ARM64_LIB" "$SIM_OBJ_DIR/sim_arm64.o"
 
