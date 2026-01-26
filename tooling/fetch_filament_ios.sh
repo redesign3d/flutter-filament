@@ -8,13 +8,8 @@ XCFRAMEWORK_PATH="$OUT_DIR/Filament.xcframework"
 
 has_required_slices() {
   [[ -d "$XCFRAMEWORK_PATH/ios-arm64" ]] || return 1
-  if [[ -d "$XCFRAMEWORK_PATH/ios-arm64_x86_64-simulator" ]]; then
-    return 0
-  fi
-  if [[ -d "$XCFRAMEWORK_PATH/ios-arm64-simulator" && -d "$XCFRAMEWORK_PATH/ios-x86_64-simulator" ]]; then
-    return 0
-  fi
-  return 1
+  [[ -d "$XCFRAMEWORK_PATH/ios-x86_64-simulator" ]] || return 1
+  return 0
 }
 
 if [[ -d "$XCFRAMEWORK_PATH" ]]; then
@@ -40,32 +35,21 @@ INCLUDE_DIR="$SRC_DIR/include"
 mkdir -p "$OUT_DIR"
 
 DEVICE_DIR="$WORK_DIR/device_arm64"
-SIM_ARM64_DIR="$WORK_DIR/sim_arm64"
 SIM_X86_64_DIR="$WORK_DIR/sim_x86_64"
-SIM_OBJ_DIR="$WORK_DIR/sim_arm64_objs"
-mkdir -p "$DEVICE_DIR" "$SIM_ARM64_DIR" "$SIM_X86_64_DIR" "$SIM_OBJ_DIR"
+mkdir -p "$DEVICE_DIR" "$SIM_X86_64_DIR"
 
 DEVICE_LIB="$DEVICE_DIR/libfilament_all.a"
-SIM_ARM64_LIB="$SIM_ARM64_DIR/libfilament_all.a"
 SIM_X86_64_LIB="$SIM_X86_64_DIR/libfilament_all.a"
+
 
 /usr/bin/libtool -static -arch_only arm64 -o "$DEVICE_LIB" "$LIB_DIR"/*.a
 /usr/bin/libtool -static -arch_only x86_64 -o "$SIM_X86_64_LIB" "$LIB_DIR"/*.a
 
-cd "$SIM_OBJ_DIR"
-ar -x "$DEVICE_LIB"
-find "$SIM_OBJ_DIR" -name "*.o" -print0 | while IFS= read -r -d '' obj; do
-  xcrun vtool -set-version-min iossim 14.0 14.0 -replace -output "$obj" "$obj"
-done
-/usr/bin/libtool -static -o "$SIM_ARM64_LIB" "$SIM_OBJ_DIR"/*.o
-
 echo "Device lib architectures: $(/usr/bin/lipo -info "$DEVICE_LIB")"
-echo "Simulator arm64 lib architectures: $(/usr/bin/lipo -info "$SIM_ARM64_LIB")"
 echo "Simulator x86_64 lib architectures: $(/usr/bin/lipo -info "$SIM_X86_64_LIB")"
 
 /usr/bin/xcodebuild -create-xcframework \
   -library "$DEVICE_LIB" -headers "$INCLUDE_DIR" \
-  -library "$SIM_ARM64_LIB" -headers "$INCLUDE_DIR" \
   -library "$SIM_X86_64_LIB" -headers "$INCLUDE_DIR" \
   -output "$XCFRAMEWORK_PATH"
 
