@@ -31,3 +31,8 @@ migrate_working_dir/
 .flutter-plugins
 .flutter-plugins-dependencies
 build/
+
+# Filament artifacts (downloaded/generated)
+ios/Filament.xcframework/
+tooling/filament-android-maven/
+tooling/filament-tools/

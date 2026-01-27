@@ -1,0 +1,8 @@
+# Exclude large/generated artifacts from published package
+/ios/Filament.xcframework/**
+/tooling/filament-android-maven/**
+/tooling/filament-tools/**
+
+# Keep tooling scripts and manifests
+!/tooling/*.sh
+!/tooling/*.json

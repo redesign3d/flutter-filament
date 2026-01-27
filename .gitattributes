@@ -1,3 +1,0 @@
-ios/Filament.xcframework/** filter=lfs diff=lfs merge=lfs -text
-tooling/filament-android-maven/** filter=lfs diff=lfs merge=lfs -text
-tooling/filament-tools/** filter=lfs diff=lfs merge=lfs -text
