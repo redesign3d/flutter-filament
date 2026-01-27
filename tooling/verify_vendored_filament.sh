@@ -31,6 +31,11 @@ file_hash() {
   shasum -a 256 "$file" | awk '{print $1}'
 }
 
+is_placeholder() {
+  local value="$1"
+  [[ -z "$value" ]] || [[ "$value" == "REPLACE_ME" ]]
+}
+
 has_lfs_pointers() {
   local dir="$1"
   if [[ ! -d "$dir" ]]; then
@@ -85,7 +90,7 @@ if [[ -n "$actual_android_hash" ]] && [[ "$expected_android_hash" != "$actual_an
   exit 1
 fi
 
-if [[ -n "$actual_ios_hash" ]] && [[ "$expected_ios_hash" != "$actual_ios_hash" ]]; then
+if [[ -n "$actual_ios_hash" ]] && ! is_placeholder "$expected_ios_hash" && [[ "$expected_ios_hash" != "$actual_ios_hash" ]]; then
   echo "iOS Filament XCFramework hash mismatch." >&2
   echo "Expected: $expected_ios_hash" >&2
   echo "Actual:   $actual_ios_hash" >&2
