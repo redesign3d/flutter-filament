@@ -2,7 +2,7 @@
   "filament_version": "1.68.4",
   "generated_at": "2026-01-27",
   "android_maven_sha256": "6cd3f6376e607d1db2ace1d707f4cfad0a79e5c848e1fa8d5bb6ec84358f6ba2",
-  "ios_xcframework_sha256": "23710b87be1047d158b7b97971722dc42ee42cfd51126178729e5a552794ff89",
+  "ios_xcframework_sha256": "f3d31efcff4c9f74fb87ddac74a41acbdb0e7227f13ed8837fa248a692bae909",
   "ios_license_sha256": "02d70b593dd8e9355dd8e1ca8d13c303bee5bcaf3065b66ff6e4f534e1e6a2c1",
   "ios_readme_sha256": "84deed2b223aea124fc4f6f0efcba6c9c14422a760da3c59df9f0c419a8e7be7"
 }

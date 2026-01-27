@@ -95,14 +95,16 @@ build_ios "x86_64" "iphonesimulator" "$BUILD_ROOT/cmake-ios-release-x86_64-sim" 
 
 mkdir -p "$OUT_DIR"
 
-DEVICE_LIB="$BUILD_ROOT/libfilament_all_arm64.a"
-SIM_ARM64_LIB="$BUILD_ROOT/libfilament_all_arm64_sim.a"
-SIM_X86_64_LIB="$BUILD_ROOT/libfilament_all_x86_64_sim.a"
-SIM_UNIVERSAL_LIB="$BUILD_ROOT/libfilament_all_sim.a"
+DEVICE_LIB="$BUILD_ROOT/device/libfilament_all.a"
+SIM_ARM64_LIB="$BUILD_ROOT/sim/libfilament_all_arm64.a"
+SIM_X86_64_LIB="$BUILD_ROOT/sim/libfilament_all_x86_64.a"
+SIM_UNIVERSAL_LIB="$BUILD_ROOT/sim/libfilament_all.a"
 
 DEVICE_LIB_DIR="$DEVICE_PREFIX/lib/arm64"
 SIM_ARM64_LIB_DIR="$SIM_ARM64_PREFIX/lib/arm64"
 SIM_X86_64_LIB_DIR="$SIM_X86_64_PREFIX/lib/x86_64"
+
+mkdir -p "$(dirname "$DEVICE_LIB")" "$(dirname "$SIM_ARM64_LIB")"
 
 /usr/bin/libtool -static -o "$DEVICE_LIB" "$DEVICE_LIB_DIR"/*.a
 /usr/bin/libtool -static -o "$SIM_ARM64_LIB" "$SIM_ARM64_LIB_DIR"/*.a
