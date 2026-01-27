@@ -23,22 +23,30 @@ Android and iOS using the texture rendering path (no PlatformView).
   - Simulator uses x86_64 slices (Apple Silicon requires Rosetta)
 
 ## Setup
-1) Ensure Git LFS assets are present (if using LFS):
-```
-git lfs pull
-```
-
-2) Verify vendored Filament artifacts:
+1) Verify Filament artifacts (optional for contributors):
 ```
 ./tooling/verify_vendored_filament.sh
 ```
 
-3) Android app config (consumer):
+2) Android app config (consumer):
 - `minSdkVersion 21`
 - ABI filter `arm64-v8a` only
 
-4) iOS app config (consumer):
+3) iOS app config (consumer):
 - `platform :ios, '14.0'`
+
+## iOS binary acquisition
+The plugin downloads a pinned Filament XCFramework automatically during `pod install`.
+
+Environment options:
+- Default: auto-download using a checksum-verified archive.
+- Offline mode: `FILAMENT_WIDGET_DISABLE_BINARY_DOWNLOAD=1`
+- Local override: `FILAMENT_WIDGET_LOCAL_XCFRAMEWORK=/abs/path/to/Filament.xcframework`
+- Mirror URL override: `FILAMENT_WIDGET_IOS_XCFRAMEWORK_URL=https://your-mirror/Filament.xcframework.zip`
+
+Downloads are cached under:
+- macOS: `~/Library/Caches/filament_widget`
+- Linux: `~/.cache/filament_widget`
 
 ## Usage
 ```dart
@@ -97,9 +105,9 @@ Models used:
   https://polyhaven.com/a/venice_sunset
 
 ## Troubleshooting
-- Missing Filament artifacts: re-run `./tooling/verify_vendored_filament.sh` and ensure the repo includes the vendored binaries.
+- Missing Filament artifacts: run `./tooling/verify_vendored_filament.sh` to trigger/validate the iOS download.
 - iOS builds on CI require `flutter build ios --debug --no-codesign`.
-- iOS simulator builds expect Filament.xcframework slices for `ios-arm64` and `ios-x86_64-simulator`.
+- iOS simulator builds expect Filament.xcframework slices for `ios-arm64` and `ios-arm64_x86_64-simulator` (or `ios-arm64-simulator`).
 - Android builds require NDK 27.x (CI installs `ndk;27.0.12077973`).
 
 ## Updating vendored Filament
