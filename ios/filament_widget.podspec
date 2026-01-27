@@ -18,6 +18,7 @@ A new Flutter plugin project.
   s.dependency 'Flutter'
   s.platform = :ios, '14.0'
   s.vendored_frameworks = 'Filament.xcframework'
+  s.prepare_command = 'bash ios/Scripts/ensure_filament_xcframework.sh'
   s.frameworks = ['Metal', 'MetalKit', 'QuartzCore', 'CoreVideo', 'CoreGraphics', 'UIKit']
   s.libraries = 'c++'
   s.resources = 'Resources/**/*'
@@ -27,8 +28,8 @@ A new Flutter plugin project.
     'DEFINES_MODULE' => 'YES',
     'CLANG_CXX_LANGUAGE_STANDARD' => 'c++17',
     'CLANG_CXX_LIBRARY' => 'libc++',
-    'EXCLUDED_ARCHS[sdk=iphonesimulator*]' => 'i386',
-    'HEADER_SEARCH_PATHS' => '"$(PODS_TARGET_SRCROOT)/Classes" "$(PODS_TARGET_SRCROOT)/Filament.xcframework/ios-arm64/Headers" "$(PODS_TARGET_SRCROOT)/Filament.xcframework/ios-arm64_x86_64-simulator/Headers" "$(PODS_TARGET_SRCROOT)/Filament.xcframework/ios-arm64-simulator/Headers" "$(PODS_TARGET_SRCROOT)/Filament.xcframework/ios-x86_64-simulator/Headers"'
+    'EXCLUDED_ARCHS[sdk=iphonesimulator*]' => 'i386 arm64',
+    'HEADER_SEARCH_PATHS' => '"$(PODS_TARGET_SRCROOT)/Classes" "$(PODS_TARGET_SRCROOT)/Filament.xcframework/ios-arm64/Headers" "$(PODS_TARGET_SRCROOT)/Filament.xcframework/ios-x86_64-simulator/Headers"'
   }
   s.swift_version = '5.0'
 
