@@ -15,6 +15,9 @@ jobs:
         with:
           lfs: true
 
+      - name: Ensure Git LFS artifacts are present
+        run: git lfs pull
+
       - name: Set up Java
         uses: actions/setup-java@v4
         with:
