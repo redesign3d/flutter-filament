@@ -609,34 +609,22 @@ class FilamentViewer(
         currentSkyboxKey = cacheKey
     }
 
-    private fun mipLevelsForSize(size: Int): Int {
-        var levels = 1
-        var value = size
-        while (value > 1) {
-            value /= 2
-            levels += 1
-        }
-        return levels
-    }
-
-    private fun buildHdriCubemap(size: Int): Texture {
-        return Texture.Builder()
-            .width(size)
-            .height(size)
-            .levels(mipLevelsForSize(size))
-            .sampler(Texture.Sampler.SAMPLER_CUBEMAP)
-            .format(Texture.InternalFormat.R11F_G11F_B10F)
-            .usage(Texture.Usage.COLOR_ATTACHMENT or Texture.Usage.SAMPLEABLE)
-            .build(engine)
-    }
-
     fun setHdriFromHdr(
         buffer: ByteBuffer,
         key: String? = null,
         lightingCubemapSize: Int = 256,
         skyboxCubemapSize: Int = lightingCubemapSize,
     ) {
-        val cacheKey = if (key != null) "hdr_${key}_l${lightingCubemapSize}_s${skyboxCubemapSize}" else null
+        val supportsCustomHdriSizes = false
+        val effectiveLightingSize = if (supportsCustomHdriSizes) lightingCubemapSize else 256
+        val effectiveSkyboxSize = if (supportsCustomHdriSizes) skyboxCubemapSize else effectiveLightingSize
+        if (!supportsCustomHdriSizes && (lightingCubemapSize != 256 || skyboxCubemapSize != lightingCubemapSize)) {
+            Log.w(
+                "FilamentViewer",
+                "Custom HDRI cubemap sizes are not supported on Android; using 256 for lighting and skybox.",
+            )
+        }
+        val cacheKey = if (key != null) "hdr_${key}_l${effectiveLightingSize}_s${effectiveSkyboxSize}" else null
         
         var newIndirectLight: IndirectLight? = null
         var newSkybox: Skybox? = null
@@ -667,13 +655,11 @@ class FilamentViewer(
 
             val iblContext = IBLPrefilterContext(engine)
             val equirectToCubemap = IBLPrefilterContext.EquirectangularToCubemap(iblContext)
-            val lightingCubemap = buildHdriCubemap(lightingCubemapSize)
-            val cubemap = equirectToCubemap.run(hdrTexture, lightingCubemap)
+            val cubemap = equirectToCubemap.run(hdrTexture)
             equirectToCubemap.destroy()
 
             if (cubemap == null) {
                 eventEmitter("error", "Failed to prefilter HDRI texture.")
-                engine.destroyTexture(lightingCubemap)
                 iblContext.destroy()
                 engine.destroyTexture(hdrTexture)
                 return
@@ -691,23 +677,7 @@ class FilamentViewer(
                 return
             }
 
-            var skyboxCubemap = cubemap
-            if (skyboxCubemapSize != lightingCubemapSize) {
-                val skyboxTexture = buildHdriCubemap(skyboxCubemapSize)
-                val skyboxConverter = IBLPrefilterContext.EquirectangularToCubemap(iblContext)
-                val converted = skyboxConverter.run(hdrTexture, skyboxTexture)
-                skyboxConverter.destroy()
-                if (converted == null) {
-                    eventEmitter("error", "Failed to prefilter HDRI texture.")
-                    engine.destroyTexture(skyboxTexture)
-                    engine.destroyTexture(specularCubemap)
-                    engine.destroyTexture(cubemap)
-                    iblContext.destroy()
-                    engine.destroyTexture(hdrTexture)
-                    return
-                }
-                skyboxCubemap = converted
-            }
+            val skyboxCubemap = cubemap
 
             iblContext.destroy()
             engine.destroyTexture(hdrTexture)
