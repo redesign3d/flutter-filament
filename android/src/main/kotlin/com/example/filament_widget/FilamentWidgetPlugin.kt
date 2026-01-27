@@ -43,6 +43,8 @@ class FilamentWidgetPlugin :
     private var cacheManager: FilamentCacheManager? = null
     private var activity: Activity? = null
     private var lifecycleCallbacks: Application.ActivityLifecycleCallbacks? = null
+    private val hdriLightingSizes = setOf(64, 128, 256, 512, 1024, 2048)
+    private val hdriSkyboxSizes = setOf(512, 1024, 2048, 4096, 8192)
 
     override fun onAttachedToEngine(binding: FlutterPluginBinding) {
         context = binding.applicationContext
@@ -124,6 +126,36 @@ class FilamentWidgetPlugin :
             "zoomEnd" -> handleZoomEnd(call, safeResult)
             else -> safeResult.notImplemented()
         }
+    }
+
+    private fun parseHdriSizes(call: MethodCall, result: Result): Pair<Int, Int>? {
+        val lightingSize = call.argument<Int>("lightingCubemapSize") ?: 256
+        val skyboxSize = call.argument<Int>("skyboxCubemapSize") ?: lightingSize
+        if (!hdriLightingSizes.contains(lightingSize)) {
+            result.error(
+                FilamentErrors.INVALID_ARGS,
+                "lightingCubemapSize must be one of ${hdriLightingSizes.sorted()}.",
+                null
+            )
+            return null
+        }
+        if (!hdriSkyboxSizes.contains(skyboxSize)) {
+            result.error(
+                FilamentErrors.INVALID_ARGS,
+                "skyboxCubemapSize must be one of ${hdriSkyboxSizes.sorted()}.",
+                null
+            )
+            return null
+        }
+        if (skyboxSize < lightingSize) {
+            result.error(
+                FilamentErrors.INVALID_ARGS,
+                "skyboxCubemapSize must be >= lightingCubemapSize.",
+                null
+            )
+            return null
+        }
+        return lightingSize to skyboxSize
     }
 
     override fun onListen(arguments: Any?, events: EventChannel.EventSink) {
@@ -352,7 +384,8 @@ class FilamentWidgetPlugin :
             result.error(FilamentErrors.INVALID_ARGS, "Missing hdrPath.", null)
             return
         }
-        controller.setHdriFromAsset(assetPath, result)
+        val sizes = parseHdriSizes(call, result) ?: return
+        controller.setHdriFromAsset(assetPath, sizes.first, sizes.second, result)
     }
 
     private fun handleSetIBLFromUrl(call: MethodCall, result: Result) {
@@ -382,7 +415,8 @@ class FilamentWidgetPlugin :
             result.error(FilamentErrors.INVALID_ARGS, "Missing url.", null)
             return
         }
-        controller.setHdriFromUrl(url, result)
+        val sizes = parseHdriSizes(call, result) ?: return
+        controller.setHdriFromUrl(url, sizes.first, sizes.second, result)
     }
 
     private fun handleFrameModel(call: MethodCall, result: Result) {

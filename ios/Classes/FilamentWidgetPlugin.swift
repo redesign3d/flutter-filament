@@ -11,6 +11,8 @@ public class FilamentWidgetPlugin: NSObject, FlutterPlugin, FlutterStreamHandler
   private var eventSink: FlutterEventSink?
   private var observingLifecycle = false
   private var nextControllerId: Int64 = 1
+  private let hdriLightingSizes: Set<Int> = [64, 128, 256, 512, 1024, 2048]
+  private let hdriSkyboxSizes: Set<Int> = [512, 1024, 2048, 4096, 8192]
 
   init(registrar: FlutterPluginRegistrar) {
     self.registrar = registrar
@@ -217,6 +219,28 @@ public class FilamentWidgetPlugin: NSObject, FlutterPlugin, FlutterStreamHandler
     return nil
   }
 
+  private func parseHdriSizes(
+    _ args: [String: Any]?,
+    result: FilamentResultOnce
+  ) -> (lighting: Int, skybox: Int)? {
+    let lightingSize = (args?["lightingCubemapSize"] as? NSNumber)?.intValue ?? 256
+    let skyboxSize = (args?["skyboxCubemapSize"] as? NSNumber)?.intValue ?? lightingSize
+
+    if !hdriLightingSizes.contains(lightingSize) {
+      result.error(code: FilamentErrors.invalidArgs, message: "lightingCubemapSize must be one of \(Array(hdriLightingSizes).sorted()).")
+      return nil
+    }
+    if !hdriSkyboxSizes.contains(skyboxSize) {
+      result.error(code: FilamentErrors.invalidArgs, message: "skyboxCubemapSize must be one of \(Array(hdriSkyboxSizes).sorted()).")
+      return nil
+    }
+    if skyboxSize < lightingSize {
+      result.error(code: FilamentErrors.invalidArgs, message: "skyboxCubemapSize must be >= lightingCubemapSize.")
+      return nil
+    }
+    return (lighting: lightingSize, skybox: skyboxSize)
+  }
+
   private func handleCreateController(_ call: FlutterMethodCall, result: FilamentResultOnce) {
     let args = call.arguments as? [String: Any]
     let debugFeaturesEnabled = args?["debugFeaturesEnabled"] as? Bool ?? true
@@ -393,7 +417,13 @@ public class FilamentWidgetPlugin: NSObject, FlutterPlugin, FlutterStreamHandler
       result.error(code: FilamentErrors.invalidArgs, message: "Missing hdrPath.")
       return
     }
-    controller.setHdriFromAsset(hdrPath: hdrPath, result: result)
+    guard let sizes = parseHdriSizes(args, result: result) else { return }
+    controller.setHdriFromAsset(
+      hdrPath: hdrPath,
+      lightingCubemapSize: sizes.lighting,
+      skyboxCubemapSize: sizes.skybox,
+      result: result
+    )
   }
 
   private func handleSetIBLFromUrl(_ call: FlutterMethodCall, result: FilamentResultOnce) {
@@ -429,7 +459,13 @@ public class FilamentWidgetPlugin: NSObject, FlutterPlugin, FlutterStreamHandler
       result.error(code: FilamentErrors.invalidArgs, message: "Missing url.")
       return
     }
-    controller.setHdriFromUrl(urlString: url, result: result)
+    guard let sizes = parseHdriSizes(args, result: result) else { return }
+    controller.setHdriFromUrl(
+      urlString: url,
+      lightingCubemapSize: sizes.lighting,
+      skyboxCubemapSize: sizes.skybox,
+      result: result
+    )
   }
 
   private func handleFrameModel(_ call: FlutterMethodCall, result: FilamentResultOnce) {

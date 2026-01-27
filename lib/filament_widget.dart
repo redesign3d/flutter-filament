@@ -627,11 +627,49 @@ class FilamentController {
     });
   }
 
-  Future<void> setHdriFromAsset(String hdrPath) async {
+  static const Set<int> _hdriLightingSizes = {64, 128, 256, 512, 1024, 2048};
+  static const Set<int> _hdriSkyboxSizes = {512, 1024, 2048, 4096, 8192};
+
+  void _validateHdriSizes({int? lightingCubemapSize, int? skyboxCubemapSize}) {
+    if (lightingCubemapSize != null && !_hdriLightingSizes.contains(lightingCubemapSize)) {
+      throw ArgumentError.value(
+        lightingCubemapSize,
+        'lightingCubemapSize',
+        'Must be one of ${_hdriLightingSizes.toList()}.',
+      );
+    }
+    if (skyboxCubemapSize != null && !_hdriSkyboxSizes.contains(skyboxCubemapSize)) {
+      throw ArgumentError.value(
+        skyboxCubemapSize,
+        'skyboxCubemapSize',
+        'Must be one of ${_hdriSkyboxSizes.toList()}.',
+      );
+    }
+    if (lightingCubemapSize != null && skyboxCubemapSize != null) {
+      if (skyboxCubemapSize < lightingCubemapSize) {
+        throw ArgumentError(
+          'skyboxCubemapSize must be >= lightingCubemapSize.',
+        );
+      }
+    }
+  }
+
+  Future<void> setHdriFromAsset(
+    String hdrPath, {
+    int? lightingCubemapSize,
+    int? skyboxCubemapSize,
+  }) async {
     await _ensureViewerReady();
+    _validateHdriSizes(
+      lightingCubemapSize: lightingCubemapSize,
+      skyboxCubemapSize: skyboxCubemapSize,
+    );
     await _methodChannel.invokeMethod<void>('setHdriFromAsset', {
       'controllerId': _controllerId,
       'hdrPath': hdrPath,
+      if (lightingCubemapSize != null)
+        'lightingCubemapSize': lightingCubemapSize,
+      if (skyboxCubemapSize != null) 'skyboxCubemapSize': skyboxCubemapSize,
     });
   }
 
@@ -651,11 +689,22 @@ class FilamentController {
     });
   }
 
-  Future<void> setHdriFromUrl(String url) async {
+  Future<void> setHdriFromUrl(
+    String url, {
+    int? lightingCubemapSize,
+    int? skyboxCubemapSize,
+  }) async {
     await _ensureViewerReady();
+    _validateHdriSizes(
+      lightingCubemapSize: lightingCubemapSize,
+      skyboxCubemapSize: skyboxCubemapSize,
+    );
     await _methodChannel.invokeMethod<void>('setHdriFromUrl', {
       'controllerId': _controllerId,
       'url': url,
+      if (lightingCubemapSize != null)
+        'lightingCubemapSize': lightingCubemapSize,
+      if (skyboxCubemapSize != null) 'skyboxCubemapSize': skyboxCubemapSize,
     });
   }
 

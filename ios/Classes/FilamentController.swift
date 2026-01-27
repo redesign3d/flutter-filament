@@ -315,7 +315,12 @@ final class FilamentController {
     }
   }
 
-  func setHdriFromAsset(hdrPath: String, result: FilamentResultOnce) {
+  func setHdriFromAsset(
+    hdrPath: String,
+    lightingCubemapSize: Int,
+    skyboxCubemapSize: Int,
+    result: FilamentResultOnce
+  ) {
     guard let renderer = ensureRenderer(result) else { return }
     let key = assetLookup(hdrPath)
     guard let url = Bundle.main.url(forResource: key, withExtension: nil) else {
@@ -335,7 +340,13 @@ final class FilamentController {
             return
           }
           var message: NSString?
-          let success = renderer.setHdriFromHDR(data, key: hdrPath, error: &message)
+          let success = renderer.setHdriFromHDR(
+            data,
+            key: hdrPath,
+            lightingCubemapSize: UInt32(lightingCubemapSize),
+            skyboxCubemapSize: UInt32(skyboxCubemapSize),
+            error: &message
+          )
           if success {
             result.success(nil)
           } else {
@@ -377,7 +388,12 @@ final class FilamentController {
     }
   }
 
-  func setHdriFromUrl(urlString: String, result: FilamentResultOnce) {
+  func setHdriFromUrl(
+    urlString: String,
+    lightingCubemapSize: Int,
+    skyboxCubemapSize: Int,
+    result: FilamentResultOnce
+  ) {
     guard let renderer = ensureRenderer(result) else { return }
     guard let url = URL(string: urlString) else {
       result.error(code: FilamentErrors.invalidArgs, message: "Invalid URL.")
@@ -397,7 +413,13 @@ final class FilamentController {
             return
           }
           var message: NSString?
-          let success = renderer.setHdriFromHDR(data, key: urlString, error: &message)
+          let success = renderer.setHdriFromHDR(
+            data,
+            key: urlString,
+            lightingCubemapSize: UInt32(lightingCubemapSize),
+            skyboxCubemapSize: UInt32(skyboxCubemapSize),
+            error: &message
+          )
           if success {
             result.success(nil)
           } else {
