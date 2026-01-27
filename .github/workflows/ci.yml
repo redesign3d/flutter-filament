@@ -2,9 +2,9 @@ name: ci
 
 on:
   push:
-    branches: [main, codex-improvements]
+    branches: [main]
   pull_request:
-    branches: [main, codex-improvements]
+    branches: [main]
 
 jobs:
   build:
@@ -12,6 +12,11 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          lfs: true
+
+      - name: Ensure Git LFS artifacts are present
+        run: git lfs pull
 
       - name: Set up Java
         uses: actions/setup-java@v4
@@ -31,11 +36,8 @@ jobs:
       - name: Install Android NDK
         run: yes | sdkmanager "ndk;27.0.12077973"
 
-      - name: Fetch Filament Android artifacts
-        run: ./tooling/fetch_filament_android.sh
-
-      - name: Fetch Filament iOS xcframework
-        run: ./tooling/fetch_filament_ios.sh
+      - name: Verify vendored Filament artifacts
+        run: ./tooling/verify_vendored_filament.sh
 
       - name: Flutter pub get
         run: flutter pub get
@@ -54,20 +56,13 @@ jobs:
         working-directory: example
 
       - name: Build example Android
-        run: flutter build apk --debug
-        working-directory: example
-
-      - name: Build example Android (x86_64 debug)
-        run: flutter build apk --debug --target-platform=android-x64
+        run: flutter build apk --debug --target-platform android-arm64,android-x64
         working-directory: example
 
       - name: Build example iOS
         run: flutter build ios --debug --no-codesign
         working-directory: example
 
-      - name: Build example iOS (simulator)
-        run: flutter build ios --debug --simulator
-        env:
-          ARCHS: x86_64
-          EXCLUDED_ARCHS: arm64
+      - name: Build example iOS simulator
+        run: flutter build ios --debug --simulator --no-codesign
         working-directory: example
