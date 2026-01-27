@@ -1212,7 +1212,11 @@ std::vector<uint32_t> BuildWireframeEdges(const std::vector<uint32_t>& indices, 
     _paused = wasPaused;
 }
 
-- (BOOL)setHdriFromHDR:(NSData *)data key:(nullable NSString *)key error:(NSString * _Nullable * _Nullable)error {
+- (BOOL)setHdriFromHDR:(NSData *)data
+                                     key:(nullable NSString *)key
+     lightingCubemapSize:(uint32_t)lightingCubemapSize
+         skyboxCubemapSize:(uint32_t)skyboxCubemapSize
+                                 error:(NSString * _Nullable * _Nullable)error {
     EnsureJobSystemAdopted(_engine);
     if (_scene == nullptr) {
         if (error) {
@@ -1223,9 +1227,35 @@ std::vector<uint32_t> BuildWireframeEdges(const std::vector<uint32_t>& indices, 
     const BOOL wasPaused = _paused;
     _paused = YES;
 
+    const uint32_t resolvedLightingSize = lightingCubemapSize > 0 ? lightingCubemapSize : 256;
+    const uint32_t resolvedSkyboxSize = skyboxCubemapSize > 0 ? skyboxCubemapSize : resolvedLightingSize;
+
+    auto mipLevelsForSize = [](uint32_t size) {
+        uint32_t levels = 1;
+        while (size > 1) {
+            size >>= 1;
+            levels += 1;
+        }
+        return levels;
+    };
+
+    auto buildCubemap = [&](uint32_t size) {
+        const uint32_t levels = mipLevelsForSize(size);
+        return Texture::Builder()
+            .width(size)
+            .height(size)
+            .levels(levels)
+            .sampler(Texture::Sampler::SAMPLER_CUBEMAP)
+            .format(Texture::InternalFormat::R11F_G11F_B10F)
+            .usage(Texture::Usage::DEFAULT | Texture::Usage::SAMPLEABLE | Texture::Usage::COLOR_ATTACHMENT)
+            .build(*_engine);
+    };
+
     std::string cacheKey = "";
     if (key != nil) {
-        cacheKey = std::string("hdr_") + std::string([key UTF8String]);
+        cacheKey = std::string("hdr_") + std::string([key UTF8String]) +
+            std::string("_l") + std::to_string(resolvedLightingSize) +
+            std::string("_s") + std::to_string(resolvedSkyboxSize);
     }
 
     IndirectLight* newIndirectLight = nullptr;
@@ -1296,13 +1326,23 @@ std::vector<uint32_t> BuildWireframeEdges(const std::vector<uint32_t>& indices, 
             _iblSpecularFilter = std::make_unique<IBLPrefilterContext::SpecularFilter>(
                 *_iblPrefilterContext);
         }
-        Texture* cubemap = (*_iblEquirectToCubemap)(equirect, nullptr);
+        Texture* lightingCubemap = buildCubemap(resolvedLightingSize);
+        Texture* cubemap = (*_iblEquirectToCubemap)(equirect, lightingCubemap);
         Texture* reflections = (*_iblSpecularFilter)(cubemap, nullptr);
+        Texture* skyboxCubemap = cubemap;
+        Texture* skyboxTexture = nullptr;
+        if (resolvedSkyboxSize != resolvedLightingSize) {
+            skyboxTexture = buildCubemap(resolvedSkyboxSize);
+            skyboxCubemap = (*_iblEquirectToCubemap)(equirect, skyboxTexture);
+        }
         _engine->flushAndWait();
         _engine->destroy(equirect);
-        if (cubemap == nullptr || reflections == nullptr) {
+        if (cubemap == nullptr || reflections == nullptr || skyboxCubemap == nullptr) {
             if (cubemap) {
                 _engine->destroy(cubemap);
+            }
+            if (skyboxTexture && skyboxTexture != cubemap) {
+                _engine->destroy(skyboxTexture);
             }
             if (reflections) {
                 _engine->destroy(reflections);
@@ -1320,7 +1360,7 @@ std::vector<uint32_t> BuildWireframeEdges(const std::vector<uint32_t>& indices, 
             .build(*_engine);
         newIblTexture = reflections;
 
-        newSkyboxTexture = cubemap;
+        newSkyboxTexture = skyboxCubemap;
         newSkybox = Skybox::Builder().environment(newSkyboxTexture).build(*_engine);
 
         if (!cacheKey.empty()) {

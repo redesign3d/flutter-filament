@@ -609,8 +609,22 @@ class FilamentViewer(
         currentSkyboxKey = cacheKey
     }
 
-    fun setHdriFromHdr(buffer: ByteBuffer, key: String? = null) {
-        val cacheKey = if (key != null) "hdr_$key" else null
+    fun setHdriFromHdr(
+        buffer: ByteBuffer,
+        key: String? = null,
+        lightingCubemapSize: Int = 256,
+        skyboxCubemapSize: Int = lightingCubemapSize,
+    ) {
+        val supportsCustomHdriSizes = false
+        val effectiveLightingSize = if (supportsCustomHdriSizes) lightingCubemapSize else 256
+        val effectiveSkyboxSize = if (supportsCustomHdriSizes) skyboxCubemapSize else effectiveLightingSize
+        if (!supportsCustomHdriSizes && (lightingCubemapSize != 256 || skyboxCubemapSize != lightingCubemapSize)) {
+            Log.w(
+                "FilamentViewer",
+                "Custom HDRI cubemap sizes are not supported on Android; using 256 for lighting and skybox.",
+            )
+        }
+        val cacheKey = if (key != null) "hdr_${key}_l${effectiveLightingSize}_s${effectiveSkyboxSize}" else null
         
         var newIndirectLight: IndirectLight? = null
         var newSkybox: Skybox? = null
@@ -643,9 +657,28 @@ class FilamentViewer(
             val equirectToCubemap = IBLPrefilterContext.EquirectangularToCubemap(iblContext)
             val cubemap = equirectToCubemap.run(hdrTexture)
             equirectToCubemap.destroy()
+
+            if (cubemap == null) {
+                eventEmitter("error", "Failed to prefilter HDRI texture.")
+                iblContext.destroy()
+                engine.destroyTexture(hdrTexture)
+                return
+            }
+
             val specularFilter = IBLPrefilterContext.SpecularFilter(iblContext)
             val specularCubemap = specularFilter.run(cubemap)
             specularFilter.destroy()
+
+            if (specularCubemap == null) {
+                eventEmitter("error", "Failed to prefilter HDRI texture.")
+                engine.destroyTexture(cubemap)
+                iblContext.destroy()
+                engine.destroyTexture(hdrTexture)
+                return
+            }
+
+            val skyboxCubemap = cubemap
+
             iblContext.destroy()
             engine.destroyTexture(hdrTexture)
 
@@ -655,8 +688,8 @@ class FilamentViewer(
                 .build(engine)
             newIblTex = specularCubemap
 
-            newSkybox = Skybox.Builder().environment(cubemap).build(engine)
-            newSkyTex = cubemap
+            newSkybox = Skybox.Builder().environment(skyboxCubemap).build(engine)
+            newSkyTex = skyboxCubemap
 
             if (cacheKey != null) {
                 val res = EnvironmentResource(newIndirectLight, newSkybox, newSkyTex, newIblTex)

@@ -24,7 +24,11 @@ typedef void (^FilamentFrameCallback)(void);
 
 - (void)setSkyboxFromKTX:(NSData *)data key:(nullable NSString *)key;
 
-- (BOOL)setHdriFromHDR:(NSData *)data key:(nullable NSString *)key error:(NSString * _Nullable * _Nullable)error;
+- (BOOL)setHdriFromHDR:(NSData *)data
+                   key:(nullable NSString *)key
+   lightingCubemapSize:(uint32_t)lightingCubemapSize
+     skyboxCubemapSize:(uint32_t)skyboxCubemapSize
+                 error:(NSString * _Nullable * _Nullable)error;
 
 - (void)frameModel:(BOOL)useWorldOrigin;
 

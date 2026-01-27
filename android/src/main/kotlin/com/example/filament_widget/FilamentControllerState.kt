@@ -318,7 +318,12 @@ class FilamentControllerState(
         }
     }
 
-    fun setHdriFromAsset(assetPath: String, result: Result) {
+    fun setHdriFromAsset(
+        assetPath: String,
+        lightingCubemapSize: Int,
+        skyboxCubemapSize: Int,
+        result: Result,
+    ) {
         if (!ensureNotDisposed(result)) {
             return
         }
@@ -337,7 +342,7 @@ class FilamentControllerState(
                             postError(result, FilamentErrors.DISPOSED, "Controller disposed.")
                             return@post
                         }
-                        current.setHdriFromHdr(buffer, assetPath)
+                        current.setHdriFromHdr(buffer, assetPath, lightingCubemapSize, skyboxCubemapSize)
                         postSuccess(result)
                     } catch (e: Exception) {
                         postError(result, FilamentErrors.NATIVE, e.message ?: "Failed to load HDRI asset.")
@@ -403,7 +408,12 @@ class FilamentControllerState(
         }
     }
 
-    fun setHdriFromUrl(url: String, result: Result) {
+    fun setHdriFromUrl(
+        url: String,
+        lightingCubemapSize: Int,
+        skyboxCubemapSize: Int,
+        result: Result,
+    ) {
         if (!ensureNotDisposed(result)) {
             return
         }
@@ -422,7 +432,7 @@ class FilamentControllerState(
                             postError(result, FilamentErrors.DISPOSED, "Controller disposed.")
                             return@post
                         }
-                        current.setHdriFromHdr(buffer, url)
+                        current.setHdriFromHdr(buffer, url, lightingCubemapSize, skyboxCubemapSize)
                         postSuccess(result)
                     } catch (e: Exception) {
                         postError(result, FilamentErrors.NATIVE, e.message ?: "Failed to load HDRI URL.")
