@@ -15,7 +15,7 @@ jobs:
 
       - name: Guard against Git LFS pointers
         run: |
-          if grep -R "version https://git-lfs.github.com/spec/v1" -n .; then
+          if grep -R "version https://git-lfs.github.com/spec/v1" -n . --exclude=ci.yml --exclude-dir=.git; then
             echo "Git LFS pointers detected in the repository." >&2
             exit 1
           fi
