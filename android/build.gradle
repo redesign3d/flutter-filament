@@ -14,18 +14,29 @@ buildscript {
     }
 }
 
-allprojects {
-    repositories {
-        google()
-        mavenCentral()
-        maven {
-            url = uri("$rootDir/../tooling/filament-android-maven")
+apply plugin: "com.android.library"
+apply plugin: "kotlin-android"
+
+repositories {
+    google()
+    mavenCentral()
+
+    if (project.hasProperty("filamentWidgetUseLocalMaven")) {
+        def localMaven = file("$rootDir/../tooling/filament-android-maven")
+        if (localMaven.exists()) {
+            def lfsPointerFound = fileTree(localMaven).any { file ->
+                file.isFile() && file.length() < 1024 && file.text.contains("git-lfs.github.com/spec/v1")
+            }
+            if (lfsPointerFound) {
+                logger.lifecycle("filament_widget: local Maven mirror contains Git LFS pointers; skipping.")
+            } else {
+                maven {
+                    url = uri(localMaven)
+                }
+            }
         }
     }
 }
-
-apply plugin: "com.android.library"
-apply plugin: "kotlin-android"
 
 android {
     namespace = "com.example.filament_widget"

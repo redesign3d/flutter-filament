@@ -12,11 +12,19 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-        with:
-          lfs: true
 
-      - name: Ensure Git LFS artifacts are present
-        run: git lfs pull
+      - name: Guard against Git LFS pointers
+        run: |
+          if grep -R "version https://git-lfs.github.com/spec/v1" -n . --exclude=ci.yml --exclude-dir=.git; then
+            echo "Git LFS pointers detected in the repository." >&2
+            exit 1
+          fi
+
+      - name: Cache iOS XCFramework downloads
+        uses: actions/cache@v4
+        with:
+          path: ~/Library/Caches/filament_widget
+          key: ios-filament-${{ hashFiles('tooling/filament_manifest.json') }}
 
       - name: Set up Java
         uses: actions/setup-java@v4
