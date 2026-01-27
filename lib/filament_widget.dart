@@ -631,14 +631,16 @@ class FilamentController {
   static const Set<int> _hdriSkyboxSizes = {512, 1024, 2048, 4096, 8192};
 
   void _validateHdriSizes({int? lightingCubemapSize, int? skyboxCubemapSize}) {
-    if (lightingCubemapSize != null && !_hdriLightingSizes.contains(lightingCubemapSize)) {
+    if (lightingCubemapSize != null &&
+        !_hdriLightingSizes.contains(lightingCubemapSize)) {
       throw ArgumentError.value(
         lightingCubemapSize,
         'lightingCubemapSize',
         'Must be one of ${_hdriLightingSizes.toList()}.',
       );
     }
-    if (skyboxCubemapSize != null && !_hdriSkyboxSizes.contains(skyboxCubemapSize)) {
+    if (skyboxCubemapSize != null &&
+        !_hdriSkyboxSizes.contains(skyboxCubemapSize)) {
       throw ArgumentError.value(
         skyboxCubemapSize,
         'skyboxCubemapSize',
