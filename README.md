@@ -23,17 +23,21 @@ Android and iOS using the texture rendering path (no PlatformView).
   - Simulator uses x86_64 slices (Apple Silicon requires Rosetta)
 
 ## Setup
-1) Fetch Filament binaries (prebuilt only):
+1) Ensure Git LFS assets are present (if using LFS):
 ```
-./tooling/fetch_filament_android.sh
-./tooling/fetch_filament_ios.sh
+git lfs pull
 ```
 
-2) Android app config (consumer):
+2) Verify vendored Filament artifacts:
+```
+./tooling/verify_vendored_filament.sh
+```
+
+3) Android app config (consumer):
 - `minSdkVersion 21`
 - ABI filter `arm64-v8a` only
 
-3) iOS app config (consumer):
+4) iOS app config (consumer):
 - `platform :ios, '14.0'`
 
 ## Usage
@@ -93,7 +97,15 @@ Models used:
   https://polyhaven.com/a/venice_sunset
 
 ## Troubleshooting
-- Missing Filament artifacts: re-run the tooling scripts in `tooling/`.
+- Missing Filament artifacts: re-run `./tooling/verify_vendored_filament.sh` and ensure the repo includes the vendored binaries.
 - iOS builds on CI require `flutter build ios --debug --no-codesign`.
 - iOS simulator builds expect Filament.xcframework slices for `ios-arm64` and `ios-x86_64-simulator`.
 - Android builds require NDK 27.x (CI installs `ndk;27.0.12077973`).
+
+## Updating vendored Filament
+To refresh the vendored artifacts (for Filament updates or rebuilds), run:
+```
+./tooling/fetch_filament_android.sh
+./tooling/fetch_filament_ios.sh
+./tooling/update_filament_manifest.sh
+```
