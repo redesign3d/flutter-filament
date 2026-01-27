@@ -4,8 +4,8 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 MANIFEST_PATH="$ROOT_DIR/tooling/filament_manifest.json"
 
-android_hash=$(find "$ROOT_DIR/tooling/filament-android-maven" -type f -print0 | sort -z | xargs -0 shasum -a 256 | shasum -a 256 | awk '{print $1}')
-ios_hash=$(find "$ROOT_DIR/ios/Filament.xcframework" -type f -print0 | sort -z | xargs -0 shasum -a 256 | shasum -a 256 | awk '{print $1}')
+android_hash=$(find "$ROOT_DIR/tooling/filament-android-maven" -type f -print0 | sort -z | xargs -0 shasum -a 256 | awk '{print $1}' | shasum -a 256 | awk '{print $1}')
+ios_hash=$(find "$ROOT_DIR/ios/Filament.xcframework" -type f -print0 | sort -z | xargs -0 shasum -a 256 | awk '{print $1}' | shasum -a 256 | awk '{print $1}')
 license_hash=$(shasum -a 256 "$ROOT_DIR/ios/Filament.LICENSE" | awk '{print $1}')
 readme_hash=$(shasum -a 256 "$ROOT_DIR/ios/Filament.README.md" | awk '{print $1}')
 
