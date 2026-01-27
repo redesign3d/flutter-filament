@@ -22,7 +22,7 @@ get_manifest_value() {
 
 dir_hash() {
   local dir="$1"
-  find "$dir" -type f -print0 | sort -z | xargs -0 shasum -a 256 | awk '{print $1}' | shasum -a 256 | awk '{print $1}'
+  LC_ALL=C find "$dir" -type f -print0 | LC_ALL=C sort -z | xargs -0 shasum -a 256 | awk '{print $1}' | shasum -a 256 | awk '{print $1}'
 }
 
 file_hash() {
