@@ -182,8 +182,11 @@ if [[ -z "$xcframework_path" ]]; then
   combined_lib="$work_dir/libfilament_all.a"
   /usr/bin/libtool -static -o "$combined_lib" "$lib_dir"/*.a
 
-  device_lib="$work_dir/libfilament_all_device.a"
-  sim_lib="$work_dir/libfilament_all_sim.a"
+  device_dir="$work_dir/device"
+  sim_dir="$work_dir/sim"
+  mkdir -p "$device_dir" "$sim_dir"
+  device_lib="$device_dir/libfilament_all.a"
+  sim_lib="$sim_dir/libfilament_all.a"
   lipo -thin arm64 "$combined_lib" -output "$device_lib"
   lipo -thin x86_64 "$combined_lib" -output "$sim_lib"
 
