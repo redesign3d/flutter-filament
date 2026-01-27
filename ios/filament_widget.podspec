@@ -18,7 +18,7 @@ A new Flutter plugin project.
   s.dependency 'Flutter'
   s.platform = :ios, '14.0'
   s.vendored_frameworks = 'Filament.xcframework'
-  s.prepare_command = 'bash ios/Scripts/ensure_filament_xcframework.sh'
+  s.prepare_command = 'bash Scripts/ensure_filament_xcframework.sh'
   s.frameworks = ['Metal', 'MetalKit', 'QuartzCore', 'CoreVideo', 'CoreGraphics', 'UIKit']
   s.libraries = 'c++'
   s.resources = 'Resources/**/*'
